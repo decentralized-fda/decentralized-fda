@@ -1,13 +1,10 @@
 import { readFileSync } from 'fs';
-import { join, relative } from 'path';
+import { relative } from 'path';
 import { glob } from 'glob';
-import { promisify } from 'util';
 import { LinkInfo, LinkLocation, ScanOptions, ValidationResult } from './types';
 import { validateInternalLink } from '../validators/internal';
 import { validateExternalLink } from '../validators/external';
 import { extractLinks } from '../extractors';
-
-const globAsync = promisify(glob);
 
 async function validateLink(link: LinkInfo, rootDir: string, checkLiveLinks: boolean): Promise<ValidationResult> {
   try {
@@ -62,7 +59,7 @@ export async function scanLinks(rootDir: string, options: ScanOptions = {}): Pro
   // Process each pattern
   for (const pattern of patterns) {
     // Find all files matching the pattern
-    const files = await globAsync(pattern, {
+    const files = glob.sync(pattern, {
       ignore: excludePatterns,
       nodir: true,
       absolute: true,
@@ -120,4 +117,4 @@ export function formatReport(results: LinkInfo[]): string {
   }
 
   return report;
-} 
+}

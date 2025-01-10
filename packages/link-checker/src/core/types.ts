@@ -31,4 +31,28 @@ export interface ScanOptions {
 export interface ValidationResult {
   isValid: boolean;
   error?: string;
-} 
+  filePath?: string;
+  lineNumber?: number;
+}
+
+export interface BrokenLink {
+  url: string;
+  filePath: string;
+  lineNumber: number;
+  error: string;
+}
+
+export function formatBrokenLinksTable(brokenLinks: BrokenLink[]): string {
+  const maxUrlWidth = Math.max(...brokenLinks.map(link => link.url.length), 10);
+  const maxPathWidth = Math.max(...brokenLinks.map(link => link.filePath.length), 10);
+  const maxErrorWidth = Math.max(...brokenLinks.map(link => link.error.length), 10);
+
+  const header = `| ${'URL'.padEnd(maxUrlWidth)} | ${'File Path'.padEnd(maxPathWidth)} | ${'Line'.toString().padEnd(6)} | ${'Error'.padEnd(maxErrorWidth)} |\n` +
+                 `|${'-'.repeat(maxUrlWidth + 2)}|${'-'.repeat(maxPathWidth + 2)}|${'-'.repeat(8)}|${'-'.repeat(maxErrorWidth + 2)}|`;
+
+  const rows = brokenLinks.map(link => 
+    `| ${link.url.padEnd(maxUrlWidth)} | ${link.filePath.padEnd(maxPathWidth)} | ${link.lineNumber.toString().padEnd(6)} | ${link.error.padEnd(maxErrorWidth)} |`
+  ).join('\n');
+
+  return `${header}\n${rows}`;
+}
