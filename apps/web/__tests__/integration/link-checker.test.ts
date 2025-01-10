@@ -210,43 +210,50 @@ export function extractLinksFromJsx(jsx: string, filePath: string): Array<{ url:
     
     // Check standard href attributes
     while ((match = linkRegex.exec(line)) !== null) {
-      links.push({
-        url: match[1],
-        location: {
-          filePath,
-          lineNumber: lineIndex + 1,
-          columnNumber: match.index + 6 // 6 is length of 'href="'
-        }
-      })
+      if (match[1].trim()) { // Skip empty strings
+        links.push({
+          url: match[1],
+          location: {
+            filePath,
+            lineNumber: lineIndex + 1,
+            columnNumber: match.index + 6 // 6 is length of 'href="'
+          }
+        })
+      }
     }
 
     // Check JSX href expressions
     while ((match = jsxLinkRegex.exec(line)) !== null) {
-      links.push({
-        url: match[1],
-        location: {
-          filePath,
-          lineNumber: lineIndex + 1,
-          columnNumber: match.index + 6
-        }
-      })
+      if (match[1].trim()) { // Skip empty strings
+        links.push({
+          url: match[1],
+          location: {
+            filePath,
+            lineNumber: lineIndex + 1,
+            columnNumber: match.index + 6
+          }
+        })
+      }
     }
 
     // Check Next.js Link components
     while ((match = nextLinkRegex.exec(line)) !== null) {
-      links.push({
-        url: match[1],
-        location: {
-          filePath,
-          lineNumber: lineIndex + 1,
-          columnNumber: match.index
-        }
-      })
+      if (match[1].trim()) { // Skip empty strings
+        links.push({
+          url: match[1],
+          location: {
+            filePath,
+            lineNumber: lineIndex + 1,
+            columnNumber: match.index
+          }
+        })
+      }
     }
   })
   
   // Also check for links defined in objects/arrays
-  links.push(...extractLinksFromObject(jsx, filePath))
+  const objectLinks = extractLinksFromObject(jsx, filePath).filter(link => link.url.trim())
+  links.push(...objectLinks)
   
   return links
 }
