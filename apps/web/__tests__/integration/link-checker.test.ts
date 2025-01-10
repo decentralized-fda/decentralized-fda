@@ -146,9 +146,23 @@ export function extractLinksFromObject(content: string, filePath: string): Array
   const jsxHrefRegex = /href=\{["'`](.*?)["'`]\}/g
   // Match URL strings in arrays/objects - more permissive pattern
   const urlRegex = /["'`](\/[^"'`\s]+)["'`]/g
+  // Match object property patterns like: href: "/path", or href:"/path",
+  const objectPropRegex = /href\s*:\s*["'`](\/[^"'`\s]+)["'`]/g
   
   lines.forEach((line, lineIndex) => {
     let match
+
+    // Check for href: "path" pattern in objects
+    while ((match = objectPropRegex.exec(line)) !== null) {
+      links.push({
+        url: match[1],
+        location: {
+          filePath,
+          lineNumber: lineIndex + 1,
+          columnNumber: match.index
+        }
+      })
+    }
 
     // Check for href: "path" pattern
     while ((match = hrefRegex.exec(line)) !== null) {
@@ -284,22 +298,79 @@ describe('Integration - Link Checker', () => {
     }
   }
 
-  async function getAllTsxFiles(dir: string): Promise<string[]> {
+  async function getAllFiles(dir: string): Promise<string[]> {
     const files: string[] = []
     const items = fs.readdirSync(dir)
+    
+    // File extensions that could contain links
+    const linkableExtensions = new Set([
+      '.tsx', '.ts', '.js', '.jsx', 
+      '.md', '.mdx', 
+      '.html', '.htm',
+      '.json', '.yaml', '.yml',
+      '.vue', '.svelte',
+      // Add more extensions as needed
+    ])
     
     for (const item of items) {
       const fullPath = path.join(dir, item)
       const stat = fs.statSync(fullPath)
       
       if (stat.isDirectory()) {
-        files.push(...await getAllTsxFiles(fullPath))
-      } else if (item.endsWith('.tsx')) {
-        files.push(fullPath)
+        // Skip node_modules and other unnecessary directories
+        if (!item.startsWith('.') && item !== 'node_modules' && item !== 'dist' && item !== '.next') {
+          files.push(...await getAllFiles(fullPath))
+        }
+      } else {
+        const ext = path.extname(item).toLowerCase()
+        if (linkableExtensions.has(ext)) {
+          files.push(fullPath)
+        }
       }
     }
     
     return files
+  }
+
+  // Function to collect all links from a set of files
+  async function collectAllLinks(): Promise<Array<{ url: string; location: { filePath: string; lineNumber: number; columnNumber: number } }>> {
+    const allLinks: Array<{ url: string; location: { filePath: string; lineNumber: number; columnNumber: number } }> = []
+    
+    // Get all files from relevant directories
+    const allFiles = [
+      ...await getAllFiles(path.join(process.cwd(), 'app')),
+      ...await getAllFiles(path.join(process.cwd(), 'components')),
+      ...await getAllFiles(path.join(process.cwd(), 'docs')),
+      ...await getAllFiles(path.join(process.cwd(), 'lib')),
+      ...await getAllFiles(path.join(process.cwd(), 'config')),
+      ...await getAllFiles(path.join(process.cwd(), 'public')),
+      // Add more directories as needed
+    ]
+
+    // Process each file
+    for (const file of allFiles) {
+      const content = fs.readFileSync(file, 'utf-8')
+      const ext = path.extname(file).toLowerCase()
+      
+      // Use appropriate link extraction based on file type
+      let fileLinks: Array<{ url: string; location: LinkLocation }> = []
+      
+      if (ext === '.tsx' || ext === '.jsx') {
+        fileLinks = extractLinksFromJsx(content, file)
+      } else {
+        // For all other file types, use the object extractor as it's more general
+        fileLinks = extractLinksFromObject(content, file)
+      }
+      
+      allLinks.push(...fileLinks)
+    }
+
+    // Remove duplicates while preserving location information
+    const uniqueLinks = allLinks.filter((link, index, self) =>
+      index === self.findIndex((l) => l.url === link.url)
+    )
+
+    return uniqueLinks
   }
 
   async function checkLinksInBatches(links: Array<{ url: string; location: { filePath: string; lineNumber: number; columnNumber: number } }>): Promise<{ valid: string[], invalid: Array<{ url: string; error: string; location: { filePath: string; lineNumber: number; columnNumber: number } }> }> {
@@ -394,28 +465,18 @@ describe('Integration - Link Checker', () => {
       throw new Error('Development server must be running to check links')
     }
 
-    console.log('\n📂 Scanning for TSX files...')
-    // Get all TSX files from app and components directories
-    const tsxFiles = [
-        ...await getAllTsxFiles(path.join(process.cwd(), 'app')),
-        ...await getAllTsxFiles(path.join(process.cwd(), 'components')),
-        ...await getAllTsxFiles(path.join(process.cwd(), 'docs')),
-        ...await getAllTsxFiles(path.join(process.cwd(), 'lib')),
-    ]
-    console.log(`✅ Found ${tsxFiles.length} TSX files`)
-
-    console.log('\n🔍 Extracting links from files...')
-    // Extract links from all files with their locations
-    const allLinks: Array<{ url: string; location: { filePath: string; lineNumber: number; columnNumber: number } }> = []
-    for (const file of tsxFiles) {
-      const content = fs.readFileSync(file, 'utf-8')
-      const fileLinks = extractLinksFromJsx(content, file)
-      if (fileLinks.length > 0) {
-        //console.log(`  Found ${fileLinks.length} links in ${path.relative(process.cwd(), file)}`)
-      }
-      allLinks.push(...fileLinks)
-    }
+    console.log('\n📂 Scanning for files...')
+    const allLinks = await collectAllLinks()
     console.log(`✅ Found ${allLinks.length} total links to check`)
+
+    // Log all discovered links
+    console.log('\n📋 All discovered links:')
+    let linksList = ''
+    allLinks.forEach(({ url, location }) => {
+      const relativePath = path.relative(process.cwd(), location.filePath)
+      linksList += `  ${url} (${relativePath}:${location.lineNumber})\n`
+    })
+    console.log(linksList)
 
     // Check all links
     const results = await checkLinksInBatches(allLinks)
@@ -432,4 +493,30 @@ describe('Integration - Link Checker', () => {
     // Assert all links are valid
     expect(results.invalid).toHaveLength(0)
   }, 300000) // Increased timeout to 5 minutes
+
+  // Test for comprehensive link collection
+  it('should collect links from both TSX and TS files including navigation', async () => {
+    const allLinks = await collectAllLinks()
+    
+    // Check for specific navigation links
+    const navigationLinks = [
+      '/',
+      '/conditions',
+      '/treatments',
+      '/safe/redirect',
+      '/disease-eradication-act',
+      '/health-savings-sharing',
+      '/docs'
+    ]
+    
+    navigationLinks.forEach(link => {
+      const found = allLinks.some(({ url }) => url === link)
+      expect(found).toBe(true)
+    })
+
+    // Specifically verify health-savings-sharing link
+    const healthSavingsLink = allLinks.find(({ url }) => url === '/health-savings-sharing')
+    expect(healthSavingsLink).toBeDefined()
+    expect(healthSavingsLink?.location.filePath).toContain('dfda-nav.ts')
+  })
 }) 
