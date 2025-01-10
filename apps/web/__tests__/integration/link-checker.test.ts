@@ -148,9 +148,34 @@ export function extractLinksFromObject(content: string, filePath: string): Array
   const urlRegex = /["'`](\/[^"'`\s]+)["'`]/g
   // Match object property patterns like: href: "/path", or href:"/path",
   const objectPropRegex = /href\s*:\s*["'`](\/[^"'`\s]+)["'`]/g
+  // Match markdown links [text](url)
+  const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
   
   lines.forEach((line, lineIndex) => {
     let match
+
+    // Skip lines that look like Markdown list items with directory paths
+    if (line.match(/^\s*[-*+]\s+`?\/[^`\s]+`?:/)) {
+      return
+    }
+
+    // Check for markdown links if it's a markdown file
+    if (filePath.toLowerCase().endsWith('.md') || filePath.toLowerCase().endsWith('.mdx')) {
+      while ((match = markdownLinkRegex.exec(line)) !== null) {
+        const url = match[2]
+        // Only add if it looks like an internal link and not a directory path
+        if (url.startsWith('/') && !url.includes('//') && !line.includes('`: ')) {
+          links.push({
+            url,
+            location: {
+              filePath,
+              lineNumber: lineIndex + 1,
+              columnNumber: match.index + match[1].length + 3 // [text]( <- offset to the actual URL
+            }
+          })
+        }
+      }
+    }
 
     // Check for href: "path" pattern in objects
     while ((match = objectPropRegex.exec(line)) !== null) {
@@ -190,8 +215,8 @@ export function extractLinksFromObject(content: string, filePath: string): Array
 
     // Check for URL strings in arrays/objects
     while ((match = urlRegex.exec(line)) !== null) {
-      // Only add if it looks like a valid internal path
-      if (match[1].startsWith('/') && !match[1].includes('//')) {
+      // Only add if it looks like a valid internal path and not a directory reference
+      if (match[1].startsWith('/') && !match[1].includes('//') && !line.includes('`: ')) {
         links.push({
           url: match[1],
           location: {
@@ -518,5 +543,30 @@ describe('Integration - Link Checker', () => {
     const healthSavingsLink = allLinks.find(({ url }) => url === '/health-savings-sharing')
     expect(healthSavingsLink).toBeDefined()
     expect(healthSavingsLink?.location.filePath).toContain('dfda-nav.ts')
+  })
+
+  // Add a new test for markdown directory paths
+  it('should not treat markdown directory paths as links', async () => {
+    const testContent = `
+# Test Directory Structure
+- \`/test\`: A test directory
+- \`/docs\`: Documentation files
+- \`/src\`: Source files
+- [Valid Link](/actual-link)
+- [Another Link](/another-link)
+`
+    const links = extractLinksFromObject(testContent, 'test.md')
+    
+    // Should find the actual links but not the directory paths
+    expect(links.map(l => l.url)).toEqual(['/actual-link', '/another-link'])
+    
+    // Test with real README content
+    const readmeContent = `
+- \`/partners\`: Contains information pertinent to all partners involved in the FDAi.
+- \`/researchers\`: Dedicated to academic and medical researchers contributing to the project.
+[Real Link](/real-link)
+`
+    const readmeLinks = extractLinksFromObject(readmeContent, 'README.md')
+    expect(readmeLinks.map(l => l.url)).toEqual(['/real-link'])
   })
 }) 
