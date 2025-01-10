@@ -1,121 +1,50 @@
 import { LinkInfo } from '../core/types';
 
 // Regular expressions for different types of links
-const MARKDOWN_LINK_REGEX = /\[([^\]]*?)\]\(([^)]*)\)?|\[([^\]]*?)\]\(\)?|\[([^\]]*?)(?=\n|$)/g;
-const URL_REGEX = /(?<![(\[])https?:\/\/[^\s<>"')\]]+/g;
+const EDGE_CASE_REGEX = /(?:\[([^\]]+)\]\(([^)]+)\)|([^<>"')\]\s]+))/g;
+const URL_REGEX = /https?:\/\/[^\s<>"')\]]+/g;
+const MARKDOWN_LINK_REGEX = /\[([^\]]*?)\]\(([^\s)]+)\)/g;
 const HTML_LINK_REGEX = /(?:href|src)=["']([^"']+)["']/g;
 const IMPORT_REGEX = /(?:import|require)\(?['"]([^'"]+)['"]\)?/g;
 const DYNAMIC_IMPORT_REGEX = /dynamic\(\(\)\s*=>\s*import\(['"]([^'"]+)['"]\)\)/g;
 const CSS_MODULE_REGEX = /from\s+['"]([^'"]+\.module\.css)['"]/g;
+const MDX_IMPORT_REGEX = /import\s+(?:[A-Z][A-Za-z0-9]*\s+from\s+)?['"]([^'"]+\.(?:jsx?|tsx?|mdx?))['"]/g;
+const NEXTJS_LINK_REGEX = /<Link\s+[^>]*href=["']([^"']+)["']/g;
+const NEXTJS_IMAGE_REGEX = /<Image\s+[^>]*src=["']([^"']+)["']/g;
 
 export function extractLinks(content: string, filePath: string): LinkInfo[] {
-  const links = new Map<string, LinkInfo>();
-  const orderedLinks: LinkInfo[] = [];
-  let match;
+  const links: LinkInfo[] = [];
+  const regexes = [
+    NEXTJS_LINK_REGEX,
+    NEXTJS_IMAGE_REGEX,
+    MARKDOWN_LINK_REGEX,
+    URL_REGEX,
+    HTML_LINK_REGEX,
+    IMPORT_REGEX,
+    DYNAMIC_IMPORT_REGEX,
+    CSS_MODULE_REGEX,
+    MDX_IMPORT_REGEX,
+    EDGE_CASE_REGEX
+  ];
 
-  // Extract Markdown links
-  while ((match = MARKDOWN_LINK_REGEX.exec(content)) !== null) {
-    const url = match[2].trim();
-    if (!links.has(url)) {
-      const linkInfo = {
-        url,
-        location: {
-          filePath,
-          lineNumber: getLineNumber(content, match.index),
-          columnNumber: getColumnNumber(content, match.index)
-        }
-      };
-      links.set(url, linkInfo);
-      orderedLinks.push(linkInfo);
+  for (const regex of regexes) {
+    let match;
+    while ((match = regex.exec(content)) !== null) {
+      const url = (match[1] || match[2] || match[0]).trim();
+      if (url) {
+        links.push({
+          url,
+          location: {
+            filePath,
+            lineNumber: getLineNumber(content, match.index),
+            columnNumber: getColumnNumber(content, match.index)
+          }
+        });
+      }
     }
   }
 
-  // Extract raw URLs
-  while ((match = URL_REGEX.exec(content)) !== null) {
-    const url = match[0].trim();
-    if (!links.has(url)) {
-      const linkInfo = {
-        url,
-        location: {
-          filePath,
-          lineNumber: getLineNumber(content, match.index),
-          columnNumber: getColumnNumber(content, match.index)
-        }
-      };
-      links.set(url, linkInfo);
-      orderedLinks.push(linkInfo);
-    }
-  }
-
-  // Extract HTML/JSX links
-  while ((match = HTML_LINK_REGEX.exec(content)) !== null) {
-    const url = match[1].trim();
-    if (!links.has(url)) {
-      const linkInfo = {
-        url,
-        location: {
-          filePath,
-          lineNumber: getLineNumber(content, match.index),
-          columnNumber: getColumnNumber(content, match.index)
-        }
-      };
-      links.set(url, linkInfo);
-      orderedLinks.push(linkInfo);
-    }
-  }
-
-  // Extract JavaScript/TypeScript imports
-  while ((match = IMPORT_REGEX.exec(content)) !== null) {
-    const url = match[1].trim();
-    if (!links.has(url)) {
-      const linkInfo = {
-        url,
-        location: {
-          filePath,
-          lineNumber: getLineNumber(content, match.index),
-          columnNumber: getColumnNumber(content, match.index)
-        }
-      };
-      links.set(url, linkInfo);
-      orderedLinks.push(linkInfo);
-    }
-  }
-
-  // Extract Next.js dynamic imports
-  while ((match = DYNAMIC_IMPORT_REGEX.exec(content)) !== null) {
-    const url = match[1].trim();
-    if (!links.has(url)) {
-      const linkInfo = {
-        url,
-        location: {
-          filePath,
-          lineNumber: getLineNumber(content, match.index),
-          columnNumber: getColumnNumber(content, match.index)
-        }
-      };
-      links.set(url, linkInfo);
-      orderedLinks.push(linkInfo);
-    }
-  }
-
-  // Extract CSS module imports
-  while ((match = CSS_MODULE_REGEX.exec(content)) !== null) {
-    const url = match[1].trim();
-    if (!links.has(url)) {
-      const linkInfo = {
-        url,
-        location: {
-          filePath,
-          lineNumber: getLineNumber(content, match.index),
-          columnNumber: getColumnNumber(content, match.index)
-        }
-      };
-      links.set(url, linkInfo);
-      orderedLinks.push(linkInfo);
-    }
-  }
-
-  return Array.from(links.values());
+  return links;
 }
 
 function getLineNumber(content: string, index: number): number {
