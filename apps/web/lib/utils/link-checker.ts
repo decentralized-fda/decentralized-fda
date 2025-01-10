@@ -108,12 +108,12 @@ export function extractLinksFromObject(content: string, filePath: string): Array
   const links: Array<{ url: string; location: LinkLocation }> = []
   const lines = content.split('\n')
   
-  // Match patterns like href: "/path" or href: '/path' or href = "/path" or href = '/path'
-  const hrefRegex = /href:\s*["'](.*?)["']/g
+  // Match patterns like href:"/path" or href: "/path" or href='/path' or href = "/path"
+  const hrefRegex = /href\s*:\s*["'](.*?)["']/g
   // Match patterns like href={"/path"} or href={'/path'} or href={`/path`}
   const jsxHrefRegex = /href=\{["'`](.*?)["'`]\}/g
-  // Match URL strings in arrays/objects
-  const urlRegex = /["'`](\/((?!\/)[^"'`\s])+)["'`]/g
+  // Match URL strings in arrays/objects - more permissive pattern
+  const urlRegex = /["'`](\/[^"'`\s]+)["'`]/g
   
   lines.forEach((line, lineIndex) => {
     let match
@@ -217,4 +217,4 @@ export function extractLinksFromJsx(jsx: string, filePath: string): Array<{ url:
   links.push(...extractLinksFromObject(jsx, filePath))
   
   return links
-} 
+}
