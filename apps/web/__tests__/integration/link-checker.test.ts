@@ -26,7 +26,7 @@ const EXCLUDED_FOLDERS = [
   // Add specific subfolders to exclude even if they're in included folders
   'public/assets',
   'docs/generated',
-  'public/docs/api-docs',
+  'docs/api-docs',
   // Add more folders to exclude
 ]
 
@@ -36,6 +36,15 @@ const EXCLUSION_PATTERNS = {
   templateLiterals: [
     /\$\{.*?\}/,  // ${variable}
     /{.*?}/,      // {variable}
+    /\/[^/\s]+\$\{.*?\}/,  // /path${var}
+    /`\/[^`]+\$\{.*?\}[^`]*`/,  // `/path${var}rest`
+    /\/[^/\s]+\{.*?\}/,   // /path{var}
+  ],
+  // Line context patterns
+  lineContext: [
+    /.*\${.*?}.*/,  // Any line with template literals
+    /.*`.*`.*/,     // Any line with backticks
+    /.*\+.*(?:var|let|const|${).*/, // Lines with concatenation and variables
   ],
   // Special protocols
   protocols: [
@@ -70,6 +79,20 @@ const EXCLUSION_PATTERNS = {
   // Directory documentation
   directoryDocs: [
     /^\s*[-*+]\s+`?\/[^`\s]+`?:/m,  // Markdown list items with directory paths
+    /e\.g\.,\s+[`']?\/[^`'\s,)]+[`']?/i,  // e.g., /example
+    /\(e\.g\.\s+[`']?\/[^`'\s,)]+[`']?\)/i,  // (e.g. /example)
+    /example.*?\/[^`'\s,)\]]+/i,  // example: /path
+    /folder.*?\/[^`'\s,)\]]+/i,   // folder: /path
+    /directory.*?\/[^`'\s,)\]]+/i // directory: /path
+  ],
+  // File system and storage paths
+  filePaths: [
+    /['"]\s*[\w-]+\/.*?\/[\w-]+['"]/,  // 'dir/subdir/file'
+    /=\s*['"][\w-]+\/.*?\/[\w-]+['"]/,  // = 'dir/subdir/file'
+    /\+\s*['"]\/[\w-]+['"]/,  // + '/filename'
+    /const\s+\w+\s*=\s*['"][\w-]+\/.*?\/[\w-]+['"]/,  // const path = 'dir/subdir/file'
+    /let\s+\w+\s*=\s*['"][\w-]+\/.*?\/[\w-]+['"]/,    // let path = 'dir/subdir/file'
+    /var\s+\w+\s*=\s*['"][\w-]+\/.*?\/[\w-]+['"]/     // var path = 'dir/subdir/file'
   ]
 }
 
@@ -164,27 +187,35 @@ export async function checkLink(url: string, location: LinkLocation): Promise<Li
   }
 }
 
-// Helper function to validate internal links
-function isValidInternalLink(url: string, line?: string): boolean {
-  // Must start with / and contain at least one character after
-  if (!url.startsWith('/') || url.length < 2) {
+// Helper function to validate links (both internal and external)
+function isValidLink(url: string, line?: string): boolean {
+  // Must be either an http(s) URL or start with / and contain at least one character after
+  if (!url.startsWith('http') && (!url.startsWith('/') || url.length < 2)) {
     return false
   }
 
-  // Check against all exclusion patterns
-  for (const category of Object.values(EXCLUSION_PATTERNS)) {
-    for (const pattern of category) {
-      if (pattern.test(url)) {
-        return false
-      }
-    }
+  // Skip if line contains variable assignments or file paths
+  if (line && (
+    line.match(/(?:const|let|var|import)\s+\w+\s*=\s*["'`]/) || 
+    line.match(/\+\s*["'`]/) ||
+    line.includes('require(')
+  )) {
+    return false
   }
 
-  // Check line context if provided
-  if (line) {
-    // Check for code examples and directory documentation in the line context
-    for (const pattern of [...EXCLUSION_PATTERNS.codeExamples, ...EXCLUSION_PATTERNS.directoryDocs]) {
-      if (pattern.test(line)) {
+  // For markdown links, always allow internal paths that start with /
+  if (line?.includes('](') && url.startsWith('/')) {
+    return true
+  }
+
+  // Check URL against all exclusion patterns
+  for (const category of Object.values(EXCLUSION_PATTERNS)) {
+    for (const pattern of category) {
+      // Skip checking exclusion patterns for external URLs and markdown internal links
+      if ((url.startsWith('http') || (line?.includes('](') && url.startsWith('/'))) && !pattern.source.includes('http')) {
+        continue
+      }
+      if (pattern.test(url) || (line && pattern.test(line))) {
         return false
       }
     }
@@ -197,56 +228,56 @@ export function extractLinksFromObject(content: string, filePath: string): Array
   const links: Array<{ url: string; location: LinkLocation }> = []
   const lines = content.split('\n')
   
-  // Match patterns like href:"/path" or href: "/path" or href='/path' or href = "/path"
-  const hrefRegex = /href\s*:\s*["'](.*?)["']/g
-  // Match patterns like href={"/path"} or href={'/path'} or href={`/path`}
+  // Simple regex to match URLs, excluding trailing punctuation
+  const bareUrlRegex = /https?:\/\/[^\s"'`\]>)]+(?=[.,;:!?)*]*(?:\s|$))/g
+  
+  // Match patterns like href:"/path" or href: "/path" or href='http://example.com'
+  const hrefRegex = /href\s*[:=]\s*["']((?:\/[^"'\s)]+|https?:\/\/[^"'\s)]+))["']/g
+  
+  // Match patterns like href={"/path"} or href={'http://example.com'}
   const jsxHrefRegex = /href=\{["'`](.*?)["'`]\}/g
-  // Match URL strings in arrays/objects - more permissive pattern
-  const urlRegex = /["'`](\/[^"'`\s]+)["'`]/g
-  // Match object property patterns like: href: "/path", or href:"/path",
-  const objectPropRegex = /href\s*:\s*["'`](\/[^"'`\s]+)["'`]/g
-  // Match markdown links [text](url)
-  const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
+  
+  // Match markdown links [text](url), capturing only the URL part
+  const markdownLinkRegex = /\[([^\]]*)\]\(((?:https?:\/\/[^)\s]+|\/[^)\s]+))\)/g
+  
+  // Keep track of found URLs to avoid duplicates
+  const foundUrls = new Set<string>()
   
   lines.forEach((line, lineIndex) => {
     let match
 
-    // Check for markdown links if it's a markdown file
+    // Skip lines that look like variable assignments or file paths
+    if (line.match(/(?:const|let|var|import)\s+\w+\s*=\s*["'`]/) || 
+        line.match(/\+\s*["'`]/) ||
+        line.includes('require(')) {
+      return
+    }
+
+    // Check for markdown links first if it's a markdown file
     if (filePath.toLowerCase().endsWith('.md') || filePath.toLowerCase().endsWith('.mdx')) {
       while ((match = markdownLinkRegex.exec(line)) !== null) {
-        const url = match[2]
-        if (isValidInternalLink(url, line)) {
+        // Use match[2] which contains the URL part from the parentheses
+        const url = match[2].trim()
+        if (isValidLink(url, line) && !foundUrls.has(url)) {
+          foundUrls.add(url)
           links.push({
             url,
             location: {
               filePath,
               lineNumber: lineIndex + 1,
-              columnNumber: match.index + match[1].length + 3
+              // Adjust column to point to the URL part, not the text part
+              columnNumber: match.index + match[1].length + 3 // +3 for '](' characters
             }
           })
         }
       }
     }
 
-    // Check for href: "path" pattern in objects
-    while ((match = objectPropRegex.exec(line)) !== null) {
-      const url = match[1]
-      if (isValidInternalLink(url, line)) {
-        links.push({
-          url,
-          location: {
-            filePath,
-            lineNumber: lineIndex + 1,
-            columnNumber: match.index
-          }
-        })
-      }
-    }
-
-    // Check for href: "path" pattern
+    // Check for href attributes
     while ((match = hrefRegex.exec(line)) !== null) {
       const url = match[1]
-      if (isValidInternalLink(url, line)) {
+      if (isValidLink(url, line) && !foundUrls.has(url)) {
+        foundUrls.add(url)
         links.push({
           url,
           location: {
@@ -258,10 +289,11 @@ export function extractLinksFromObject(content: string, filePath: string): Array
       }
     }
 
-    // Check for href={"path"} pattern
+    // Check for JSX href attributes
     while ((match = jsxHrefRegex.exec(line)) !== null) {
       const url = match[1]
-      if (isValidInternalLink(url, line)) {
+      if (isValidLink(url, line) && !foundUrls.has(url)) {
+        foundUrls.add(url)
         links.push({
           url,
           location: {
@@ -273,10 +305,11 @@ export function extractLinksFromObject(content: string, filePath: string): Array
       }
     }
 
-    // Check for URL strings in arrays/objects
-    while ((match = urlRegex.exec(line)) !== null) {
-      const url = match[1]
-      if (isValidInternalLink(url, line)) {
+    // Check for bare URLs last
+    while ((match = bareUrlRegex.exec(line)) !== null) {
+      const url = match[0]
+      if (isValidLink(url, line) && !foundUrls.has(url)) {
+        foundUrls.add(url)
         links.push({
           url,
           location: {
@@ -389,16 +422,23 @@ describe('Integration - Link Checker', () => {
     
     for (const item of items) {
       const fullPath = path.join(dir, item)
-      const relativePath = path.relative(process.cwd(), fullPath)
+      // Normalize paths to use forward slashes for consistent comparison
+      const relativePath = path.relative(process.cwd(), fullPath).split(path.sep).join('/')
       const stat = fs.statSync(fullPath)
       
       if (stat.isDirectory()) {
         // Skip if this directory is in the exclusion list
-        if (EXCLUDED_FOLDERS.some(excluded => 
-          relativePath === excluded || // Exact match
-          relativePath.startsWith(excluded + path.sep) || // Subfolder match
-          relativePath.startsWith('.' + path.sep + excluded) // Hidden folder match
-        )) {
+        const shouldExclude = EXCLUDED_FOLDERS.some(excluded => {
+          // Normalize excluded path to use forward slashes
+          const normalizedExcluded = excluded.split(path.sep).join('/')
+          return (
+            relativePath === normalizedExcluded || // Exact match
+            relativePath.startsWith(normalizedExcluded + '/') || // Subfolder match
+            relativePath.startsWith('.' + '/' + normalizedExcluded) // Hidden folder match
+          )
+        })
+
+        if (shouldExclude) {
           continue
         }
         files.push(...await getAllFiles(fullPath))
@@ -440,7 +480,7 @@ describe('Integration - Link Checker', () => {
       }
       
       // Filter out invalid links before adding them
-      const validLinks = fileLinks.filter(link => isValidInternalLink(link.url))
+      const validLinks = fileLinks.filter(link => isValidLink(link.url))
       allLinks.push(...validLinks)
     }
 
@@ -658,5 +698,200 @@ describe('Integration - Link Checker', () => {
     expect(validUrls).not.toContain('/api/[param]')
     expect(validUrls).not.toContain('/')
     expect(validUrls).not.toContain('//')
+  })
+
+  // Add test for documentation examples
+  it('should not treat documentation examples as links', () => {
+    const testContent = `
+      Please copy this template into your respective folder (e.g., \`/researchers\`, \`/healthcare_providers\`).
+      For example: /path/to/something
+      This is a folder: /some/folder
+      In the directory /test/dir you can find...
+      Example path is /example/path
+      [Real Link](/actual-link)
+    `
+    const links = extractLinksFromObject(testContent, 'test.md')
+    
+    // Should only find actual links
+    const validUrls = links.map(l => l.url)
+    expect(validUrls).toEqual(['/actual-link'])
+    expect(validUrls).not.toContain('/researchers')
+    expect(validUrls).not.toContain('/healthcare_providers')
+    expect(validUrls).not.toContain('/path/to/something')
+    expect(validUrls).not.toContain('/some/folder')
+    expect(validUrls).not.toContain('/test/dir')
+    expect(validUrls).not.toContain('/example/path')
+  })
+
+  // Add test for JSX template interpolations
+  it('should not treat JSX template interpolations as links', () => {
+    const testContent = `
+      href={\`/docs/\${file.relativePath.replace('.md', '')}\`}
+      href={\`/api/\${id}/edit\`}
+      href={\`/users/\${userId}/profile\`}
+      href="/actual-link"
+    `
+    const links = extractLinksFromObject(testContent, 'test.tsx')
+    
+    // Should only find actual links
+    const validUrls = links.map(l => l.url)
+    expect(validUrls).toEqual(['/actual-link'])
+    expect(validUrls).not.toContain('/docs/${file.relativePath.replace')
+    expect(validUrls).not.toContain('/api/${id}')
+    expect(validUrls).not.toContain('/users/${userId}')
+  })
+
+  // Add test for file system paths
+  it('should not treat file system paths as links', () => {
+    const testContent = `
+      const imgPath = 'articles/' + articleId + '/featured-image'
+      const path = 'uploads/images/avatar'
+      let filePath = 'data/users/profile'
+      var docPath = '/documents/report'
+      uploadToPath('images/' + id + '/thumbnail')
+      [Real Link](/actual-link)
+    `
+    const links = extractLinksFromObject(testContent, 'test.ts')
+    
+    // Should only find actual links
+    const validUrls = links.map(l => l.url)
+    expect(validUrls).toEqual(['/actual-link'])
+    expect(validUrls).not.toContain('/featured-image')
+    expect(validUrls).not.toContain('/thumbnail')
+    expect(validUrls).not.toContain('/documents/report')
+  })
+
+  // Add test for external links
+  it('should collect both internal and external links', () => {
+    const testContent = `
+      href="https://example.com"
+      href="http://test.com/path"
+      href="/internal/path"
+      [External](https://github.com)
+      [Internal](/docs/test)
+      const invalidPath = '/not/a/link'
+    `
+    const links = extractLinksFromObject(testContent, 'test.md')
+    
+    // Should find both internal and external links
+    const validUrls = links.map(l => l.url)
+    expect(validUrls).toContain('https://example.com')
+    expect(validUrls).toContain('http://test.com/path')
+    expect(validUrls).toContain('/internal/path')
+    expect(validUrls).toContain('https://github.com')
+    expect(validUrls).toContain('/docs/test')
+    expect(validUrls).not.toContain('/not/a/link')
+  })
+
+  // Debug test for external links
+  it('should extract external links correctly', () => {
+    const testContent = `[Link](https://markdown.com)`
+    const links = extractLinksFromObject(testContent, 'test.md')
+    console.log('Found links:', links.map(l => l.url))
+    console.log('Raw content:', testContent)
+    console.log('Markdown match:', testContent.match(/\[([^\]]+)\]\((https?:\/\/[^)\s]+|\/[^)\s]+)\)/))
+    
+    const validUrls = links.map(l => l.url)
+    expect(validUrls).toContain('https://markdown.com')
+  })
+
+  // Add test for URLs with trailing punctuation
+  it('should handle URLs with trailing punctuation correctly', () => {
+    const testContent = `
+      Check out our app at https://app.crowdsourcingcures.org).
+      Visit (https://example.com).
+      See [our site](https://test.com).
+      Go to https://example.org.
+      Link: https://test.net/path?param=1)
+      Another (https://test.org/path#section).
+    `
+    const links = extractLinksFromObject(testContent, 'test.md')
+    
+    // Should extract clean URLs without trailing punctuation
+    const validUrls = links.map(l => l.url)
+    expect(validUrls).toContain('https://app.crowdsourcingcures.org')
+    expect(validUrls).toContain('https://example.com')
+    expect(validUrls).toContain('https://test.com')
+    expect(validUrls).toContain('https://example.org')
+    expect(validUrls).toContain('https://test.net/path?param=1')
+    expect(validUrls).toContain('https://test.org/path#section')
+    
+    // Should not include trailing punctuation
+    expect(validUrls).not.toContain('https://app.crowdsourcingcures.org).')
+    expect(validUrls).not.toContain('https://example.com).')
+    expect(validUrls).not.toContain('https://test.net/path?param=1)')
+    expect(validUrls).not.toContain('https://test.org/path#section).')
+  })
+
+  // Add test for markdown link text vs URL
+  it('should extract URLs from markdown link parentheses, not square brackets', () => {
+    const testContent = `
+      [http://example.com](https://real-link.com)
+      [/wrong/path](/correct/path)
+      [http://www.appliedclinicaltrialsonline.com/appliedclinicaltrials/article...](http://actual-link.com)
+      [Click here!](https://click.com)
+      [/not/this/path](/but/this/path)
+      [https://wrong.com](/right/path)
+      [link](http://link.com)
+    `
+    console.log('Test content:', testContent)
+    const links = extractLinksFromObject(testContent, 'test.md')
+    console.log('Extracted links:', links)
+    
+    // Test each line individually with the regex
+    const mdRegex = /\[([^\]]*)\]\(((?:https?:\/\/[^)\s]+|\/[^)\s]+))\)/g
+    testContent.split('\n').forEach(line => {
+      console.log('\nTesting line:', line)
+      let match
+      while ((match = mdRegex.exec(line)) !== null) {
+        console.log('Match found:', {
+          full: match[0],
+          text: match[1],
+          url: match[2],
+          index: match.index
+        })
+      }
+    })
+    
+    // Should extract URLs from parentheses only
+    const validUrls = links.map(l => l.url)
+    console.log('Valid URLs:', validUrls)
+    
+    // Should extract URLs from parentheses only
+    expect(validUrls).toContain('https://real-link.com')
+    expect(validUrls).toContain('/correct/path')
+    expect(validUrls).toContain('http://actual-link.com')
+    expect(validUrls).toContain('https://click.com')
+    expect(validUrls).toContain('/but/this/path')
+    expect(validUrls).toContain('/right/path')
+    expect(validUrls).toContain('http://link.com')
+    
+    // Should not extract URLs from square brackets
+    expect(validUrls).not.toContain('http://example.com')
+    expect(validUrls).not.toContain('/wrong/path')
+    expect(validUrls).not.toContain('http://www.appliedclinicaltrialsonline.com/appliedclinicaltrials/article...')
+    expect(validUrls).not.toContain('/not/this/path')
+    expect(validUrls).not.toContain('https://wrong.com')
+  })
+
+  // Test that no files from docs/api-docs are included
+  it('should not include any files from docs/api-docs directory', async () => {
+    // Get all files that would be scanned
+    console.log('\n📂 Scanning for files to verify exclusion of docs/api-docs...')
+    const allLinks = await collectAllLinks()
+    
+    // Check that no file paths contain docs/api-docs
+    const apiDocsFiles = allLinks.filter(link => 
+      link.location.filePath.replace(/\\/g, '/').includes('docs/api-docs')
+    )
+    
+    if (apiDocsFiles.length > 0) {
+      console.log('\n❌ Found files from docs/api-docs that should be excluded:')
+      apiDocsFiles.forEach(({ location }) => {
+        console.log(`  ${location.filePath}:${location.lineNumber}`)
+      })
+    }
+    
+    expect(apiDocsFiles).toHaveLength(0)
   })
 }) 
