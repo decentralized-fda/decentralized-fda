@@ -1,12 +1,12 @@
 import Link from "next/link"
 import { ArrowLeft, Beaker, FileText, BarChart, Search, Download, Share2, Code } from "lucide-react"
 
-import { Button } from "@/app/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
-import { Input } from "@/app/components/ui/input"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
-import { Header } from "@/app/components/Header"
-import { Footer } from "@/app/components/Footer"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Header } from "@/components/Header"
+import { Footer } from "@/components/Footer"
 
 export default function OutcomeLabels() {
   return (

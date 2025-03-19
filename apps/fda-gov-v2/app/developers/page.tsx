@@ -12,12 +12,12 @@ import {
   FileText,
   Mail,
 } from "lucide-react"
-import { Button } from "@/app/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/app/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
-import { ApiKeyRequestForm } from "@/app/components/developers/ApiKeyRequestForm"
-import { OAuthApplicationForm } from "@/app/components/developers/OAuthApplicationForm"
-import { CodeExampleTabs } from "@/app/components/developers/CodeExampleTabs"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ApiKeyRequestForm } from "@/components/developers/ApiKeyRequestForm"
+import { OAuthApplicationForm } from "@/components/developers/OAuthApplicationForm"
+import { CodeExampleTabs } from "@/components/developers/CodeExampleTabs"
 
 export default function DeveloperPortal() {
   return (

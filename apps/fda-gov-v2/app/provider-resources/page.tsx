@@ -1,11 +1,11 @@
 import { CardFooter } from "@/components/ui/card"
 import Link from "next/link"
 import { ArrowLeft, FileText, Download, BookOpen, Users, Stethoscope, BarChart3, ClipboardList } from "lucide-react"
-import { Header } from "@/app/components/Header"
-import { Footer } from "@/app/components/Footer"
-import { Button } from "@/app/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
+import { Header } from "@/components/Header"
+import { Footer } from "@/components/Footer"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function ProviderResources() {
   return (

@@ -1,9 +1,9 @@
 import Link from "next/link"
 import { ArrowLeft, Menu } from "lucide-react"
-import { Header } from "@/app/components/Header"
-import { Footer } from "@/app/components/Footer"
-import { DocSidebar } from "@/app/components/developers/DocSidebar"
-import { DocContent } from "@/app/components/developers/DocContent"
+import { Header } from "@/components/Header"
+import { Footer } from "@/components/Footer"
+import { DocSidebar } from "@/components/developers/DocSidebar"
+import { DocContent } from "@/components/developers/DocContent"
 import { Button } from "@/components/ui/button"
 
 export default function DeveloperDocumentation() {

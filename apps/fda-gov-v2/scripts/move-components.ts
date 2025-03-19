@@ -15,13 +15,17 @@ const componentsToDelete: string[] = [
 
 function ensureDirectoryExists(dir: string): void {
   if (!fs.existsSync(dir)) {
-    throw new Error(`Directory ${dir} does not exist`)
+    fs.mkdirSync(dir, { recursive: true })
   }
 }
 
 function moveFile(sourcePath: string, destPath: string): void {
   try {
     if (fs.existsSync(sourcePath)) {
+      // Create destination directory if it doesn't exist
+      const destDir = path.dirname(destPath)
+      ensureDirectoryExists(destDir)
+
       // Check if destination file exists
       if (fs.existsSync(destPath)) {
         const sourceContent: string = fs.readFileSync(sourcePath, 'utf8')
@@ -31,13 +35,13 @@ function moveFile(sourcePath: string, destPath: string): void {
           console.log(`${path.basename(sourcePath)} is identical, removing source`)
           fs.unlinkSync(sourcePath)
         } else {
-          console.warn(`Warning: ${path.basename(sourcePath)} differs from UI version, keeping UI version`)
+          console.warn(`Warning: ${path.basename(sourcePath)} differs from destination version, keeping destination version`)
           fs.unlinkSync(sourcePath)
         }
       } else {
         fs.copyFileSync(sourcePath, destPath)
         fs.unlinkSync(sourcePath)
-        console.log(`Moved ${path.basename(sourcePath)} to ui directory`)
+        console.log(`Moved ${path.basename(sourcePath)} to ${path.relative(process.cwd(), destPath)}`)
       }
     }
   } catch (error) {
@@ -53,18 +57,15 @@ function updateImports(files: string[]): void {
       let content: string = fs.readFileSync(filePath, 'utf8')
       let hasChanges: boolean = false
 
-      // Update imports for moved components
-      componentsToMove.forEach((component: string) => {
-        const componentName: string = path.basename(component, path.extname(component))
-        const oldImport: RegExp = new RegExp(`from ["']@/components/${componentName}["']`, 'g')
-        const newImport: string = `from "@/components/ui/${componentName}"`
-        
-        if (oldImport.test(content)) {
-          content = content.replace(oldImport, newImport)
-          hasChanges = true
-          console.log(`Updated imports in ${file} for ${componentName}`)
-        }
-      })
+      // Update imports from @/app/components to @/components
+      const oldImportPattern: RegExp = /@\/app\/components\//g
+      const newImportPath: string = '@/components/'
+      
+      if (oldImportPattern.test(content)) {
+        content = content.replace(oldImportPattern, newImportPath)
+        hasChanges = true
+        console.log(`Updated imports in ${file} from @/app/components to @/components`)
+      }
 
       if (hasChanges) {
         fs.writeFileSync(filePath, content)
@@ -77,33 +78,47 @@ function updateImports(files: string[]): void {
 }
 
 try {
+  const appComponentsDir: string = path.join(process.cwd(), 'app', 'components')
   const componentsDir: string = path.join(process.cwd(), 'components')
-  const uiDir: string = path.join(componentsDir, 'ui')
 
-  // Verify directories exist
+  // Ensure the destination directory exists
   ensureDirectoryExists(componentsDir)
-  ensureDirectoryExists(uiDir)
 
-  // Move unique components
-  componentsToMove.forEach((file: string) => {
-    const sourcePath: string = path.join(componentsDir, file)
-    const destPath: string = path.join(uiDir, file)
+  // Get all files in app/components recursively
+  const componentFiles: string[] = glob.sync('**/*', {
+    cwd: appComponentsDir,
+    nodir: true,
+    absolute: true
+  })
+
+  // Move each file
+  componentFiles.forEach((sourcePath: string) => {
+    const relativePath: string = path.relative(appComponentsDir, sourcePath)
+    const destPath: string = path.join(componentsDir, relativePath)
     moveFile(sourcePath, destPath)
   })
 
-  // Delete duplicate components
-  componentsToDelete.forEach((file: string) => {
-    const filePath: string = path.join(componentsDir, file)
-    try {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath)
-        console.log(`Deleted duplicate ${file}`)
+  // Remove empty directories in app/components
+  if (fs.existsSync(appComponentsDir)) {
+    const removeEmptyDirs = (dir: string) => {
+      let files = fs.readdirSync(dir)
+      
+      for (const file of files) {
+        const fullPath = path.join(dir, file)
+        if (fs.statSync(fullPath).isDirectory()) {
+          removeEmptyDirs(fullPath)
+        }
       }
-    } catch (error) {
-      console.error(`Error deleting ${file}:`, error)
-      process.exit(1)
+      
+      files = fs.readdirSync(dir)
+      if (files.length === 0) {
+        fs.rmdirSync(dir)
+        console.log(`Removed empty directory: ${dir}`)
+      }
     }
-  })
+    
+    removeEmptyDirs(appComponentsDir)
+  }
 
   // Update imports in all TypeScript/JavaScript files
   const files: string[] = glob.sync('**/*.{ts,tsx,js,jsx}', {

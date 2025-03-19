@@ -1,9 +1,9 @@
 import Link from "next/link"
 import { ArrowLeft, BarChart3, Users, Clock, Heart, TrendingUp, Globe } from "lucide-react"
-import { Header } from "@/app/components/Header"
-import { Footer } from "@/app/components/Footer"
-import { Button } from "@/app/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
+import { Header } from "@/components/Header"
+import { Footer } from "@/components/Footer"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default function Impact() {
   return (

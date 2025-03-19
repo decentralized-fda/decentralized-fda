@@ -276,7 +276,7 @@ export default function CreateForm() {
                   <div className="space-y-6">
                     <div className="space-y-4">
                       <div>
-                        <Label htmlFor="title">Form Title</Label>
+                        <Label className="block">Form Title</Label>
                         <Input
                           id="title"
                           value={formTitle}
@@ -285,7 +285,7 @@ export default function CreateForm() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor="description">Description</Label>
+                        <Label className="block">Description</Label>
                         <Textarea
                           id="description"
                           value={formDescription}
@@ -297,7 +297,7 @@ export default function CreateForm() {
                     <Separator />
                     <div>
                       <Tabs defaultValue="design" value={activeTab} onValueChange={setActiveTab}>
-                        <TabsList className="w-full justify-start">
+                        <TabsList>
                           <TabsTrigger value="design">Design</TabsTrigger>
                           <TabsTrigger value="preview">Preview</TabsTrigger>
                           <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -655,541 +655,55 @@ export default function CreateForm() {
                           <TabsContent value="settings" className="space-y-4">
                             <div className="space-y-4">
                               <h3 className="text-lg font-medium">Form Settings</h3>
-
                               <div className="space-y-4">
                                 <div className="flex items-center justify-between">
                                   <div className="space-y-0.5">
-                                    <Label>Collect Patient Identifier</Label>
+                                    <Label className="block">Collect Patient Identifier</Label>
                                     <p className="text-sm text-muted-foreground">
                                       Automatically collect patient ID when form is completed
                                     </p>
                                   </div>
                                   <Switch defaultChecked />
                                 </div>
-
                                 <div className="flex items-center justify-between">
                                   <div className="space-y-0.5">
-                                    <Label>Timestamp Responses</Label>
+                                    <Label className="block">Timestamp Responses</Label>
                                     <p className="text-sm text-muted-foreground">
                                       Record the date and time when form is submitted
                                     </p>
                                   </div>
                                   <Switch defaultChecked />
                                 </div>
-
                                 <div className="flex items-center justify-between">
                                   <div className="space-y-0.5">
-                                    <Label>Allow Partial Completion</Label>
+                                    <Label className="block">Allow Partial Completion</Label>
                                     <p className="text-sm text-muted-foreground">
                                       Let patients save progress and complete form later
                                     </p>
                                   </div>
                                   <Switch defaultChecked />
                                 </div>
-
                                 <div className="flex items-center justify-between">
                                   <div className="space-y-0.5">
-                                    <Label>Show Progress Bar</Label>
-                                    <p className="text-sm text-muted-foreground">Display progress indicator to patients</p>
-                                  </div>
-                                  <Switch defaultChecked />
-                  <Tabs value={activeTab} onValueChange={setActiveTab}>
-                    <TabsList className="grid w-full grid-cols-3">
-                      <TabsTrigger value="design">Design</TabsTrigger>
-                      <TabsTrigger value="preview">Preview</TabsTrigger>
-                      <TabsTrigger value="settings">Settings</TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="design" className="space-y-6 pt-4">
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="form-title">Form Title</Label>
-                          <Input
-                            id="form-title"
-                            value={formTitle}
-                            onChange={(e) => setFormTitle(e.target.value)}
-                            placeholder="Enter form title..."
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="form-description">Description</Label>
-                          <Textarea
-                            id="form-description"
-                            value={formDescription}
-                            onChange={(e) => setFormDescription(e.target.value)}
-                            placeholder="Enter form description..."
-                          />
-                        </div>
-                      </div>
-
-                      <Separator />
-
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-lg font-medium">Questions</h3>
-                          <Button onClick={addQuestion} size="sm">
-                            <Plus className="mr-2 h-4 w-4" />
-                            Add Question
-                          </Button>
-                        </div>
-
-                        <div className="space-y-4">
-                          {questions.map((question) => (
-                            <Card key={question.id}>
-                              <CardHeader className="p-4">
-                                <div className="flex items-start justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Grip className="h-5 w-5 text-muted-foreground cursor-move" />
-                                    <div>
-                                      <div className="flex items-center gap-2">
-                                        <h4 className="font-medium">{question.question}</h4>
-                                        {question.required && (
-                                          <Badge variant="outline" className="text-xs">
-                                            Required
-                                          </Badge>
-                                        )}
-                                      </div>
-                                      <p className="text-sm text-muted-foreground">{question.description}</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    <Button variant="ghost" size="icon" onClick={() => removeQuestion(question.id)}>
-                                      <Trash className="h-4 w-4" />
-                                      <span className="sr-only">Delete</span>
-                                    </Button>
-                                  </div>
-                                </div>
-                              </CardHeader>
-                              <CardContent className="p-4 pt-0">
-                                <div className="space-y-4">
-                                  <div className="grid gap-4 sm:grid-cols-2">
-                                    <div className="space-y-2">
-                                      <Label htmlFor={`question-${question.id}`}>Question</Label>
-                                      <Input
-                                        id={`question-${question.id}`}
-                                        value={question.question}
-                                        onChange={(e) => updateQuestion(question.id, { question: e.target.value })}
-                                      />
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label htmlFor={`type-${question.id}`}>Question Type</Label>
-                                      <Select
-                                        value={question.type}
-                                        onValueChange={(value) => {
-                                          let options = {}
-                                          switch (value) {
-                                            case "text":
-                                              options = { multiline: false, placeholder: "" }
-                                              break
-                                            case "multiple-choice":
-                                              options = {
-                                                choices: [
-                                                  { value: "1", label: "Option 1" },
-                                                  { value: "2", label: "Option 2" },
-                                                ],
-                                                allowMultiple: false,
-                                              }
-                                              break
-                                            case "scale":
-                                              options = { min: 0, max: 10, step: 1, minLabel: "", maxLabel: "" }
-                                              break
-                                          }
-                                          updateQuestion(question.id, { type: value, options })
-                                        }}
-                                      >
-                                        <SelectTrigger id={`type-${question.id}`}>
-                                          <SelectValue placeholder="Select question type" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="text">Text Input</SelectItem>
-                                          <SelectItem value="multiple-choice">Multiple Choice</SelectItem>
-                                          <SelectItem value="scale">Scale</SelectItem>
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label htmlFor={`description-${question.id}`}>Description (Optional)</Label>
-                                    <Input
-                                      id={`description-${question.id}`}
-                                      value={question.description}
-                                      onChange={(e) => updateQuestion(question.id, { description: e.target.value })}
-                                      placeholder="Add a description or instructions..."
-                                    />
-                                  </div>
-
-                                  <div className="flex items-center space-x-2">
-                                    <Switch
-                                      id={`required-${question.id}`}
-                                      checked={question.required}
-                                      onCheckedChange={(checked) => updateQuestion(question.id, { required: checked })}
-                                    />
-                                    <Label htmlFor={`required-${question.id}`}>Required question</Label>
-                                  </div>
-
-                                  {question.type === "text" && (
-                                    <div className="space-y-4">
-                                      <div className="flex items-center space-x-2">
-                                        <Switch
-                                          id={`multiline-${question.id}`}
-                                          checked={question.options.multiline}
-                                          onCheckedChange={(checked) =>
-                                            updateQuestion(question.id, {
-                                              options: { ...question.options, multiline: checked },
-                                            })
-                                          }
-                                        />
-                                        <Label htmlFor={`multiline-${question.id}`}>Multi-line text input</Label>
-                                      </div>
-
-                                      <div className="space-y-2">
-                                        <Label htmlFor={`placeholder-${question.id}`}>Placeholder Text</Label>
-                                        <Input
-                                          id={`placeholder-${question.id}`}
-                                          value={question.options.placeholder || ""}
-                                          onChange={(e) =>
-                                            updateQuestion(question.id, {
-                                              options: { ...question.options, placeholder: e.target.value },
-                                            })
-                                          }
-                                          placeholder="Enter placeholder text..."
-                                        />
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {question.type === "multiple-choice" && (
-                                    <div className="space-y-4">
-                                      <div className="flex items-center space-x-2">
-                                        <Switch
-                                          id={`multiple-${question.id}`}
-                                          checked={question.options.allowMultiple}
-                                          onCheckedChange={(checked) =>
-                                            updateQuestion(question.id, {
-                                              options: { ...question.options, allowMultiple: checked },
-                                            })
-                                          }
-                                        />
-                                        <Label htmlFor={`multiple-${question.id}`}>Allow multiple selections</Label>
-                                      </div>
-
-                                      <div className="space-y-2">
-                                        <Label>Answer Choices</Label>
-                                        <div className="space-y-2">
-                                          {question.options.choices.map((choice, index) => (
-                                            <div key={index} className="flex items-center gap-2">
-                                              <Input
-                                                value={choice.label}
-                                                onChange={(e) => {
-                                                  const newChoices = [...question.options.choices]
-                                                  newChoices[index] = {
-                                                    ...newChoices[index],
-                                                    label: e.target.value,
-                                                  }
-                                                  updateQuestion(question.id, {
-                                                    options: { ...question.options, choices: newChoices },
-                                                  })
-                                                }}
-                                                placeholder={`Option ${index + 1}`}
-                                              />
-                                              <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() => {
-                                                  const newChoices = question.options.choices.filter(
-                                                    (_, i) => i !== index,
-                                                  )
-                                                  updateQuestion(question.id, {
-                                                    options: { ...question.options, choices: newChoices },
-                                                  })
-                                                }}
-                                                disabled={question.options.choices.length <= 1}
-                                              >
-                                                <X className="h-4 w-4" />
-                                                <span className="sr-only">Remove</span>
-                                              </Button>
-                                            </div>
-                                          ))}
-                                        </div>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => {
-                                            const newChoices = [...question.options.choices]
-                                            newChoices.push({
-                                              value: `${newChoices.length + 1}`,
-                                              label: `Option ${newChoices.length + 1}`,
-                                            })
-                                            updateQuestion(question.id, {
-                                              options: { ...question.options, choices: newChoices },
-                                            })
-                                          }}
-                                        >
-                                          <Plus className="mr-2 h-4 w-4" />
-                                          Add Choice
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {question.type === "scale" && (
-                                    <div className="space-y-4">
-                                      <div className="grid gap-4 sm:grid-cols-3">
-                                        <div className="space-y-2">
-                                          <Label htmlFor={`min-${question.id}`}>Minimum Value</Label>
-                                          <Input
-                                            id={`min-${question.id}`}
-                                            type="number"
-                                            value={question.options.min}
-                                            onChange={(e) =>
-                                              updateQuestion(question.id, {
-                                                options: { ...question.options, min: Number.parseInt(e.target.value) },
-                                              })
-                                            }
-                                          />
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor={`max-${question.id}`}>Maximum Value</Label>
-                                          <Input
-                                            id={`max-${question.id}`}
-                                            type="number"
-                                            value={question.options.max}
-                                            onChange={(e) =>
-                                              updateQuestion(question.id, {
-                                                options: { ...question.options, max: Number.parseInt(e.target.value) },
-                                              })
-                                            }
-                                          />
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor={`step-${question.id}`}>Step</Label>
-                                          <Input
-                                            id={`step-${question.id}`}
-                                            type="number"
-                                            value={question.options.step}
-                                            onChange={(e) =>
-                                              updateQuestion(question.id, {
-                                                options: {
-                                                  ...question.options,
-                                                  step: Number.parseFloat(e.target.value),
-                                                },
-                                              })
-                                            }
-                                          />
-                                        </div>
-                                      </div>
-
-                                      <div className="grid gap-4 sm:grid-cols-2">
-                                        <div className="space-y-2">
-                                          <Label htmlFor={`min-label-${question.id}`}>Minimum Label</Label>
-                                          <Input
-                                            id={`min-label-${question.id}`}
-                                            value={question.options.minLabel || ""}
-                                            onChange={(e) =>
-                                              updateQuestion(question.id, {
-                                                options: { ...question.options, minLabel: e.target.value },
-                                              })
-                                            }
-                                            placeholder="Label for minimum value..."
-                                          />
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor={`max-label-${question.id}`}>Maximum Label</Label>
-                                          <Input
-                                            id={`max-label-${question.id}`}
-                                            value={question.options.maxLabel || ""}
-                                            onChange={(e) =>
-                                              updateQuestion(question.id, {
-                                                options: { ...question.options, maxLabel: e.target.value },
-                                              })
-                                            }
-                                            placeholder="Label for maximum value..."
-                                          />
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-
-                          {questions.length === 0 && (
-                            <div className="rounded-lg border border-dashed p-8 text-center">
-                              <FileText className="mx-auto h-8 w-8 text-muted-foreground" />
-                              <h3 className="mt-2 text-lg font-medium">No questions added</h3>
-                              <p className="mt-1 text-sm text-muted-foreground">
-                                Add questions to your form using the button above
-                              </p>
-                              <Button onClick={addQuestion} className="mt-4">
-                                <Plus className="mr-2 h-4 w-4" />
-                                Add First Question
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </TabsContent>
-
-                    <TabsContent value="preview" className="pt-4">
-                      <Card>
-                        <CardHeader>
-                          <CardTitle>{formTitle || "Untitled Form"}</CardTitle>
-                          {formDescription && <CardDescription>{formDescription}</CardDescription>}
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-6">
-                            {questions.map((question) => (
-                              <div key={question.id} className="space-y-2">
-                                <div className="flex items-center gap-1">
-                                  <h3 className="font-medium">{question.question}</h3>
-                                  {question.required && <span className="text-red-500">*</span>}
-                                </div>
-                                {question.description && (
-                                  <p className="text-sm text-muted-foreground">{question.description}</p>
-                                )}
-                                <div className="mt-2">{renderQuestionPreview(question)}</div>
-                              </div>
-                            ))}
-
-                            {questions.length === 0 && (
-                              <div className="text-center py-8 text-muted-foreground">
-                                No questions to preview. Add questions in the Design tab.
-                              </div>
-                            )}
-                          </div>
-                        </CardContent>
-                        <CardFooter>
-                          <Button disabled className="w-full">
-                            Submit (Preview Only)
-                          </Button>
-                        </CardFooter>
-                      </Card>
-
-                      <div className="mt-4 flex justify-end">
-                        <Button variant="outline" onClick={() => setActiveTab("design")}>
-                          <Edit className="mr-2 h-4 w-4" />
-                          Return to Editing
-                        </Button>
-                      </div>
-                    </TabsContent>
-
-                    <TabsContent value="settings" className="space-y-6 pt-4">
-                      <div className="space-y-4">
-                        <h3 className="text-lg font-medium">Form Settings</h3>
-
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-0.5">
-                              <Label>Collect Patient Identifier</Label>
+                                    <Label className="block">Show Progress Bar</Label>
                               <p className="text-sm text-muted-foreground">
-                                Automatically collect patient ID when form is completed
+                                      Display progress indicator to patients
                               </p>
                             </div>
                             <Switch defaultChecked />
                           </div>
-
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-0.5">
-                              <Label>Timestamp Responses</Label>
-                              <p className="text-sm text-muted-foreground">
-                                Record the date and time when form is submitted
-                              </p>
                             </div>
-                            <Switch defaultChecked />
                           </div>
-
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-0.5">
-                              <Label>Allow Partial Completion</Label>
-                              <p className="text-sm text-muted-foreground">
-                                Let patients save progress and complete form later
-                              </p>
+                          </TabsContent>
                             </div>
-                            <Switch defaultChecked />
+                      </Tabs>
                           </div>
-
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-0.5">
-                              <Label>Show Progress Bar</Label>
-                              <p className="text-sm text-muted-foreground">Display progress indicator to patients</p>
                             </div>
-                            <Switch defaultChecked />
-                          </div>
-                        </div>
-
-                        <Separator />
-
-                        <div className="space-y-4">
-                          <h3 className="text-lg font-medium">Access Control</h3>
-
-                          <div className="space-y-2">
-                            <Label htmlFor="form-access">Who can use this form?</Label>
-                            <Select defaultValue="me">
-                              <SelectTrigger id="form-access">
-                                <SelectValue placeholder="Select access level" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="me">Only me</SelectItem>
-                                <SelectItem value="practice">My practice</SelectItem>
-                                <SelectItem value="trial">All trial investigators</SelectItem>
-                                <SelectItem value="public">Public (all platform users)</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label htmlFor="form-trials">Associated Trials</Label>
-                            <Select defaultValue="alzheimers">
-                              <SelectTrigger id="form-trials">
-                                <SelectValue placeholder="Select trial" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="alzheimers">Lecanemab for Early Alzheimer's Disease</SelectItem>
-                                <SelectItem value="parkinsons">ABBV-951 for Advanced Parkinson's Disease</SelectItem>
-                                <SelectItem value="ms">Tolebrutinib for Relapsing Multiple Sclerosis</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        <Separator />
-
-                        <div className="space-y-4">
-                          <h3 className="text-lg font-medium">Notifications</h3>
-
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-0.5">
-                              <Label>Email Notifications</Label>
-                              <p className="text-sm text-muted-foreground">Receive email when form is completed</p>
-                            </div>
-                            <Switch defaultChecked />
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-0.5">
-                              <Label>Dashboard Alerts</Label>
-                              <p className="text-sm text-muted-foreground">
-                                Show alerts in dashboard for new submissions
-                              </p>
-                            </div>
-                            <Switch defaultChecked />
-                          </div>
-                        </div>
-                      </div>
-                    </TabsContent>
-                  </Tabs>
                 </CardContent>
-                <CardFooter className="flex justify-between">
-                  <Button variant="outline">
-                    <Eye className="mr-2 h-4 w-4" />
-                    Preview
-                  </Button>
-                  <Button onClick={handleSubmit} disabled={!formTitle || questions.length === 0 || isSubmitting}>
-                    {isSubmitting ? "Creating Form..." : "Create Form"}
-                    {!isSubmitting && <ChevronRight className="ml-2 h-4 w-4" />}
+                <CardFooter className="flex justify-end gap-4">
+                  <Button variant="outline" onClick={() => {}}>Save as Draft</Button>
+                  <Button onClick={handleSubmit} disabled={isSubmitting}>
+                    {isSubmitting ? "Creating..." : "Create Form"}
                   </Button>
                 </CardFooter>
               </Card>
