@@ -17,7 +17,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 export default function CreateTrial() {
   const [step, setStep] = useState(1)
-  const [insuranceQuotes, setInsuranceQuotes] = useState([
+  const [insuranceQuotes] = useState([
     { provider: "SafeTrial Insurance", pricePerSubject: 120, coverage: "$2M", rating: 4.8 },
     { provider: "MedSecure", pricePerSubject: 145, coverage: "$3M", rating: 4.9 },
     { provider: "TrialGuard", pricePerSubject: 95, coverage: "$1.5M", rating: 4.5 },

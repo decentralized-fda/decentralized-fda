@@ -3,10 +3,16 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, CheckCircle, CreditCard, Info, Lock, Shield } from "lucide-react"
+import { ArrowLeft, CheckCircle, Lock, Shield, Info } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
@@ -23,12 +29,6 @@ export default function TrialPayment({ params }: TrialPaymentParams) {
   const router = useRouter()
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentComplete, setPaymentComplete] = useState(false)
-  const [formErrors, setFormErrors] = useState({
-    cardNumber: "",
-    cardName: "",
-    expiryDate: "",
-    cvv: "",
-  })
   const [cardNumber, setCardNumber] = useState("")
   const [expiryDate, setExpiryDate] = useState("")
 
@@ -83,7 +83,6 @@ export default function TrialPayment({ params }: TrialPaymentParams) {
       isValid = false
     }
 
-    setFormErrors(errors)
     return isValid
   }
 

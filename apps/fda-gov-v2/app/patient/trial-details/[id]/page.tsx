@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, Calendar, Check, MapPin, Shield, Star, Users } from "lucide-react"
 
@@ -17,10 +16,6 @@ interface TrialDetailsParams {
 }
 
 export default function TrialDetails({ params }: TrialDetailsParams) {
-  const [showConsentDialog, setShowConsentDialog] = useState(false)
-  const [consentStep, setConsentStep] = useState(1)
-  const [consentComplete, setConsentComplete] = useState(false)
-
   const trialId = params.id
 
   // Mock trial data
@@ -63,14 +58,6 @@ export default function TrialDetails({ params }: TrialDetailsParams) {
     },
     rating: 4.7,
     reviews: 86,
-  }
-
-  const nextConsentStep = () => {
-    if (consentStep < 3) {
-      setConsentStep(consentStep + 1)
-    } else {
-      setConsentComplete(true)
-    }
   }
 
   return (

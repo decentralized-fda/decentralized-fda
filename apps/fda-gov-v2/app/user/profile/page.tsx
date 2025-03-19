@@ -12,7 +12,6 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function UserProfile() {
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
 
   // Mock user data
@@ -27,10 +26,8 @@ export default function UserProfile() {
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    setIsSubmitting(true)
     // Simulate API call
     setTimeout(() => {
-      setIsSubmitting(false)
       setIsSuccess(true)
     }, 1500)
   }

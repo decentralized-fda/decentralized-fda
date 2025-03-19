@@ -7,10 +7,9 @@ import * as React from "react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { QuestionCard } from "./components/QuestionCard.client"
 import { QuestionPreview } from "./components/QuestionPreview"
@@ -22,7 +21,6 @@ export default function CreateForm() {
   const [formDescription, setFormDescription] = useState(
     "A comprehensive assessment tool for evaluating cognitive impairment in Alzheimer's disease patients.",
   )
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [activeTab, setActiveTab] = useState("form")
   const [questions, setQuestions] = useState<Question[]>([])
@@ -57,13 +55,8 @@ export default function CreateForm() {
     setQuestions(questions.map((q, i) => (i === index ? { ...q, ...updatedQuestion } : q)))
   }
 
-  const handleSubmit = () => {
-    setIsSubmitting(true)
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false)
-      setIsSuccess(true)
-    }, 1500)
+  const handleClick = () => {
+    setIsSuccess(true)
   }
 
   return (
@@ -175,6 +168,13 @@ export default function CreateForm() {
                     </TabsContent>
                   </Tabs>
                 </div>
+
+                <Button 
+                  className="w-full"
+                  onClick={handleClick}
+                >
+                  Create Form
+                </Button>
               </div>
             )}
           </div>

@@ -296,9 +296,12 @@ export default function InterventionAssignment({ params }: InterventionAssignmen
                       <div className="space-y-6">
                         <RadioGroup
                           value={selectedIntervention?.id?.toString()}
-                          onValueChange={(value) =>
-                            setSelectedIntervention(interventionOptions.find((o) => o.id === parseInt(value)))
-                          }
+                          onValueChange={(value) => {
+                            const intervention = interventionOptions.find((o) => o.id === parseInt(value))
+                            if (intervention) {
+                              setSelectedIntervention(intervention)
+                            }
+                          }}
                         >
                           {interventionOptions.map((option) => (
                             <div key={option.id} className="rounded-lg border p-4">

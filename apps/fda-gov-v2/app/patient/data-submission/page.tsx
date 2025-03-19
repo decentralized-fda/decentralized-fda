@@ -15,8 +15,6 @@ import { Progress } from "@/components/ui/progress"
 
 export default function DataSubmission() {
   const [submissionComplete, setSubmissionComplete] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isSuccess, setIsSuccess] = useState(false)
 
   // Mock data for a patient's trial participation
   const trialData = {
@@ -31,7 +29,6 @@ export default function DataSubmission() {
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    setIsSubmitting(true)
     setSubmissionComplete(true)
   }
 
