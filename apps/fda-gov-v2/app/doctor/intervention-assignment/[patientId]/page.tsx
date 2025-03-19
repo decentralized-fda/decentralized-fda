@@ -16,9 +16,28 @@ import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
-export default function InterventionAssignment({ params }) {
+interface InterventionAssignmentParams {
+  params: {
+    patientId: string
+  }
+}
+
+interface Intervention {
+  id: number
+  name: string
+  description: string
+  details: string
+  frequency: string
+  route: string
+  duration: string
+  monitoring: string
+  sideEffects: Array<{ name: string; frequency: string }>
+  contraindications: string[]
+}
+
+export default function InterventionAssignment({ params }: InterventionAssignmentParams) {
   const patientId = params.patientId
-  const [selectedIntervention, setSelectedIntervention] = useState(null)
+  const [selectedIntervention, setSelectedIntervention] = useState<Intervention | null>(null)
   const [clinicalNotes, setClinicalNotes] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
@@ -276,15 +295,15 @@ export default function InterventionAssignment({ params }) {
 
                       <div className="space-y-6">
                         <RadioGroup
-                          value={selectedIntervention?.id}
+                          value={selectedIntervention?.id?.toString()}
                           onValueChange={(value) =>
-                            setSelectedIntervention(interventionOptions.find((o) => o.id === Number.parseInt(value)))
+                            setSelectedIntervention(interventionOptions.find((o) => o.id === parseInt(value)))
                           }
                         >
                           {interventionOptions.map((option) => (
                             <div key={option.id} className="rounded-lg border p-4">
                               <div className="flex items-start space-x-2">
-                                <RadioGroupItem value={option.id} id={`option-${option.id}`} className="mt-1" />
+                                <RadioGroupItem value={option.id.toString()} id={`option-${option.id}`} className="mt-1" />
                                 <div className="flex-1">
                                   <Label htmlFor={`option-${option.id}`} className="text-base font-medium">
                                     {option.name}

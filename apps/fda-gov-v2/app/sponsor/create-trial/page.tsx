@@ -22,7 +22,7 @@ export default function CreateTrial() {
     { provider: "MedSecure", pricePerSubject: 145, coverage: "$3M", rating: 4.9 },
     { provider: "TrialGuard", pricePerSubject: 95, coverage: "$1.5M", rating: 4.5 },
   ])
-  const [selectedInsurance, setSelectedInsurance] = useState(null)
+  const [selectedInsurance, setSelectedInsurance] = useState<string>("")
 
   const nextStep = () => setStep(step + 1)
   const prevStep = () => setStep(step - 1)

@@ -1,9 +1,9 @@
-import { HeroSection } from "./components/HeroSection"
-import { ComparativeEffectivenessSection } from "./components/ComparativeEffectivenessSection"
-import { HowItWorksSection } from "./components/HowItWorksSection"
-import { KeyBenefitsSection } from "./components/KeyBenefitsSection"
-import { RevolutionizingMedicalProgressSection } from "./components/RevolutionizingMedicalProgressSection"
-import { OutcomeLabelsSection } from "./components/OutcomeLabelsSection"
+import { HeroSection } from "@/components/HeroSection"
+import { ComparativeEffectivenessSection } from "@/components/ComparativeEffectivenessSection"
+import { HowItWorksSection } from "@/components/HowItWorksSection"
+import { KeyBenefitsSection } from "@/components/KeyBenefitsSection"
+import { RevolutionizingMedicalProgressSection } from "@/components/RevolutionizingMedicalProgressSection"
+import { OutcomeLabelsSection } from "@/components/OutcomeLabelsSection"
 
 export default function Home() {
   return (

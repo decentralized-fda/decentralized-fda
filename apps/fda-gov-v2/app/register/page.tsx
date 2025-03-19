@@ -15,7 +15,7 @@ export default function Register() {
   const [registrationComplete, setRegistrationComplete] = useState(false)
   const [userType, setUserType] = useState("patient")
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setRegistrationComplete(true)
   }

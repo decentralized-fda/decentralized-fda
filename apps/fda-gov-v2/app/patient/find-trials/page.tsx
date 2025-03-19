@@ -25,7 +25,7 @@ import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 // Example comparative effectiveness data for various conditions
-const comparativeEffectivenessData = {
+const comparativeEffectivenessData: ComparativeEffectivenessData = {
   "Type 2 Diabetes": [
     { name: "Metformin", effectiveness: 87, trials: 245, participants: 35000 },
     { name: "GLP-1 Receptor Agonists", effectiveness: 82, trials: 178, participants: 28000 },
@@ -93,12 +93,21 @@ const platformBenefits = [
   },
 ]
 
+interface ComparativeEffectivenessData {
+  [key: string]: Array<{
+    name: string
+    effectiveness: number
+    trials: number
+    participants: number
+  }>
+}
+
 export default function FindTrials() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCondition, setSelectedCondition] = useState("")
   const [showResults, setShowResults] = useState(false)
 
-  const handleSearch = (e) => {
+  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setShowResults(true)
   }

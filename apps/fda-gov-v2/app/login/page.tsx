@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 export default function Login() {
   const [userType, setUserType] = useState("patient")
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     // In a real app, we would authenticate the user here
     // For now, just redirect to the appropriate dashboard

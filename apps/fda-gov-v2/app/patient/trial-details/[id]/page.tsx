@@ -10,7 +10,13 @@ import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-export default function TrialDetails({ params }) {
+interface TrialDetailsParams {
+  params: {
+    id: string
+  }
+}
+
+export default function TrialDetails({ params }: TrialDetailsParams) {
   const [showConsentDialog, setShowConsentDialog] = useState(false)
   const [consentStep, setConsentStep] = useState(1)
   const [consentComplete, setConsentComplete] = useState(false)

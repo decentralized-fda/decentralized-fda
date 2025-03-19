@@ -13,7 +13,13 @@ import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
-export default function TrialPayment({ params }) {
+interface TrialPaymentParams {
+  params: {
+    id: string
+  }
+}
+
+export default function TrialPayment({ params }: TrialPaymentParams) {
   const router = useRouter()
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentComplete, setPaymentComplete] = useState(false)
@@ -23,6 +29,8 @@ export default function TrialPayment({ params }) {
     expiryDate: "",
     cvv: "",
   })
+  const [cardNumber, setCardNumber] = useState("")
+  const [expiryDate, setExpiryDate] = useState("")
 
   const trialId = params.id
 
@@ -51,7 +59,7 @@ export default function TrialPayment({ params }) {
 
     let isValid = true
 
-    const cardNumberInput = document.getElementById("cardNumber") as HTMLInputElement
+    const cardNumberInput = document.getElementById("card-number") as HTMLInputElement
     if (!cardNumberInput?.value || cardNumberInput.value.replace(/\s/g, "").length !== 16) {
       errors.cardNumber = "Please enter a valid 16-digit card number"
       isValid = false
@@ -63,7 +71,7 @@ export default function TrialPayment({ params }) {
       isValid = false
     }
 
-    const expiryDateInput = document.getElementById("expiryDate") as HTMLInputElement
+    const expiryDateInput = document.getElementById("expiry") as HTMLInputElement
     if (!expiryDateInput?.value || !/^\d{2}\/\d{2}$/.test(expiryDateInput.value)) {
       errors.expiryDate = "Please enter a valid expiry date (MM/YY)"
       isValid = false
@@ -79,7 +87,7 @@ export default function TrialPayment({ params }) {
     return isValid
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
 
     if (!validateForm()) {
@@ -95,26 +103,18 @@ export default function TrialPayment({ params }) {
     }, 2000)
   }
 
-  const handleCardNumberInput = (e) => {
-    // Format card number with spaces every 4 digits
-    let value = e.target.value.replace(/\s/g, "")
-    if (value.length > 16) value = value.slice(0, 16)
-
-    // Add spaces every 4 digits
-    const formatted = value.replace(/(\d{4})/g, "$1 ").trim()
-    e.target.value = formatted
+  const handleCardNumberInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, "")
+    const formattedValue = value.replace(/(\d{4})/g, "$1 ").trim()
+    setCardNumber(formattedValue)
   }
 
-  const handleExpiryDateInput = (e) => {
-    let value = e.target.value.replace(/\D/g, "")
-
-    if (value.length > 4) value = value.slice(0, 4)
-
-    if (value.length > 2) {
-      value = value.slice(0, 2) + "/" + value.slice(2)
+  const handleExpiryDateInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, "")
+    if (value.length <= 4) {
+      const formattedValue = value.replace(/(\d{2})(\d{0,2})/, "$1/$2").trim()
+      setExpiryDate(formattedValue)
     }
-
-    e.target.value = value
   }
 
   return (
@@ -139,94 +139,55 @@ export default function TrialPayment({ params }) {
                       <CardDescription>Enter your payment information securely</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <form onSubmit={handleSubmit} className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="cardNumber">Card Number</Label>
-                          <div className="relative">
-                            <Input
-                              id="cardNumber"
-                              placeholder="1234 5678 9012 3456"
-                              className={formErrors.cardNumber ? "border-destructive" : ""}
-                              onChange={handleCardNumberInput}
-                            />
-                            <CreditCard className="absolute right-3 top-2.5 h-5 w-5 text-muted-foreground" />
-                          </div>
-                          {formErrors.cardNumber && <p className="text-sm text-destructive">{formErrors.cardNumber}</p>}
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="cardName">Name on Card</Label>
-                          <Input
-                            id="cardName"
-                            placeholder="John Smith"
-                            className={formErrors.cardName ? "border-destructive" : ""}
-                          />
-                          {formErrors.cardName && <p className="text-sm text-destructive">{formErrors.cardName}</p>}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="expiryDate">Expiry Date</Label>
-                            <Input
-                              id="expiryDate"
-                              placeholder="MM/YY"
-                              className={formErrors.expiryDate ? "border-destructive" : ""}
-                              onChange={handleExpiryDateInput}
-                            />
-                            {formErrors.expiryDate && (
-                              <p className="text-sm text-destructive">{formErrors.expiryDate}</p>
-                            )}
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-1">
-                              <Label htmlFor="cvv">CVV</Label>
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Info className="h-4 w-4 text-muted-foreground" />
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>The 3 or 4 digit security code on the back of your card</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
+                      <div className="space-y-6">
+                        <form onSubmit={handleSubmit}>
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="card-number">Card Number</Label>
+                              <Input
+                                id="card-number"
+                                placeholder="0000 0000 0000 0000"
+                                value={cardNumber}
+                                onChange={handleCardNumberInput}
+                                required
+                              />
                             </div>
-                            <Input
-                              id="cvv"
-                              placeholder="123"
-                              maxLength={4}
-                              className={formErrors.cvv ? "border-destructive" : ""}
-                            />
-                            {formErrors.cvv && <p className="text-sm text-destructive">{formErrors.cvv}</p>}
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="expiry">Expiry Date</Label>
+                                <Input
+                                  id="expiry"
+                                  placeholder="MM/YY"
+                                  value={expiryDate}
+                                  onChange={handleExpiryDateInput}
+                                  required
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="cvv">CVV</Label>
+                                <Input id="cvv" placeholder="123" maxLength={3} required />
+                              </div>
+                            </div>
+                            <div className="pt-4">
+                              <Alert variant="default" className="border-primary/20 bg-primary/5">
+                                <Lock className="h-4 w-4 text-primary" />
+                                <AlertTitle>Secure Payment</AlertTitle>
+                                <AlertDescription>
+                                  Your payment information is encrypted and secure.
+                                </AlertDescription>
+                              </Alert>
+                            </div>
                           </div>
-                        </div>
-
-                        <div className="pt-4">
-                          <Alert variant="outline" className="border-primary/20 bg-primary/5">
-                            <Lock className="h-4 w-4 text-primary" />
-                            <AlertTitle>Secure Payment</AlertTitle>
-                            <AlertDescription>
-                              Your payment information is encrypted and secure. We do not store your full card details.
-                            </AlertDescription>
-                          </Alert>
-                        </div>
-                      </form>
+                          <Button type="submit" className="mt-6 w-full" disabled={isProcessing}>
+                            {isProcessing ? (
+                              <>Processing...</>
+                            ) : (
+                              <>Pay ${trial.paymentDetails.totalDue}</>
+                            )}
+                          </Button>
+                        </form>
+                      </div>
                     </CardContent>
-                    <CardFooter className="flex flex-col space-y-4">
-                      <Button className="w-full" onClick={handleSubmit} disabled={isProcessing}>
-                        {isProcessing ? "Processing..." : `Pay $${trial.paymentDetails.totalDue}`}
-                      </Button>
-                      <p className="text-xs text-center text-muted-foreground">
-                        By clicking "Pay", you agree to our{" "}
-                        <Link href="/terms" className="underline">
-                          Terms of Service
-                        </Link>{" "}
-                        and{" "}
-                        <Link href="/privacy" className="underline">
-                          Privacy Policy
-                        </Link>
-                      </p>
-                    </CardFooter>
                   </Card>
                 </div>
 
