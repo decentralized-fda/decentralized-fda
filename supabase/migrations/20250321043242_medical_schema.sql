@@ -495,4 +495,391 @@ SELECT
         WHERE evr.platform = upi.platform
         AND evr.linked_user_id = upi.user_id
     ) as has_linked_ratings
-FROM medical.user_platform_identities upi; 
+FROM medical.user_platform_identities upi;
+
+-- Add timezone to user profiles if not exists
+ALTER TABLE core.profiles 
+ADD COLUMN IF NOT EXISTS timezone TEXT DEFAULT 'UTC';
+
+-- Notification channel preferences
+CREATE TABLE medical.notification_channels (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
+    channel_type TEXT NOT NULL CHECK (channel_type IN (
+        'sms', 'whatsapp', 'telegram', 'email', 'phone_call', 'in_app'
+    )),
+    is_enabled BOOLEAN DEFAULT true,
+    contact_value TEXT NOT NULL, -- phone number or email or telegram ID etc.
+    verification_status TEXT DEFAULT 'pending' CHECK (verification_status IN ('pending', 'verified', 'failed')),
+    verification_code TEXT,
+    verification_expires_at TIMESTAMPTZ,
+    last_verified_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, channel_type, contact_value)
+);
+
+-- Measurement reminder settings
+CREATE TABLE medical.measurement_reminders (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
+    variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
+    reminder_name TEXT,
+    frequency TEXT NOT NULL CHECK (frequency IN ('daily', 'weekly', 'monthly', 'custom')),
+    custom_cron TEXT, -- For custom schedules
+    time_of_day TIME[], -- Array of times to remind
+    days_of_week INTEGER[] CHECK (array_length(days_of_week, 1) IS NULL OR 
+        (SELECT bool_and(d BETWEEN 0 AND 6) FROM unnest(days_of_week) AS d)),
+    day_of_month INTEGER CHECK (day_of_month BETWEEN 1 AND 31),
+    start_date DATE NOT NULL,
+    end_date DATE,
+    is_active BOOLEAN DEFAULT true,
+    skip_weekends BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, variable_id, reminder_name)
+);
+
+-- Channel settings for each reminder
+CREATE TABLE medical.reminder_channels (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    reminder_id UUID NOT NULL REFERENCES medical.measurement_reminders(id) ON DELETE CASCADE,
+    channel_id UUID NOT NULL REFERENCES medical.notification_channels(id) ON DELETE CASCADE,
+    is_enabled BOOLEAN DEFAULT true,
+    retry_count INTEGER DEFAULT 0,
+    retry_interval INTERVAL DEFAULT '1 hour',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(reminder_id, channel_id)
+);
+
+-- Pending notifications (the "inbox")
+CREATE TABLE medical.pending_notifications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
+    reminder_id UUID NOT NULL REFERENCES medical.measurement_reminders(id) ON DELETE CASCADE,
+    variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
+    scheduled_for TIMESTAMPTZ NOT NULL,
+    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed', 'skipped', 'completed')),
+    response_value DECIMAL,
+    response_unit_id UUID REFERENCES medical_ref.units_of_measurement(id),
+    response_time TIMESTAMPTZ,
+    skip_reason TEXT,
+    last_value DECIMAL, -- Most recent value for quick response
+    last_unit_id UUID REFERENCES medical_ref.units_of_measurement(id),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Notification delivery attempts
+CREATE TABLE medical.notification_attempts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    notification_id UUID NOT NULL REFERENCES medical.pending_notifications(id) ON DELETE CASCADE,
+    channel_id UUID NOT NULL REFERENCES medical.notification_channels(id) ON DELETE CASCADE,
+    attempt_number INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'sent', 'delivered', 'failed')),
+    error_message TEXT,
+    sent_at TIMESTAMPTZ,
+    delivered_at TIMESTAMPTZ,
+    external_id TEXT, -- ID from notification service
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- View for upcoming notifications with channel info
+CREATE OR REPLACE VIEW medical.upcoming_notifications AS
+SELECT 
+    pn.id,
+    pn.user_id,
+    pn.variable_id,
+    pn.scheduled_for AT TIME ZONE p.timezone as local_scheduled_time,
+    pn.status,
+    pn.last_value,
+    pn.last_unit_id,
+    mr.reminder_name,
+    array_agg(DISTINCT nc.channel_type) as channels,
+    COUNT(DISTINCT na.id) FILTER (WHERE na.status = 'failed') as failed_attempts,
+    bool_or(na.status = 'delivered') as any_delivered
+FROM medical.pending_notifications pn
+JOIN core.profiles p ON pn.user_id = p.id
+JOIN medical.measurement_reminders mr ON pn.reminder_id = mr.id
+JOIN medical.reminder_channels rc ON mr.id = rc.reminder_id
+JOIN medical.notification_channels nc ON rc.channel_id = nc.id
+LEFT JOIN medical.notification_attempts na ON pn.id = na.notification_id
+WHERE pn.status IN ('pending', 'sent')
+GROUP BY pn.id, pn.user_id, pn.variable_id, pn.scheduled_for, p.timezone, 
+         pn.status, pn.last_value, pn.last_unit_id, mr.reminder_name;
+
+-- Function to record measurement from notification
+CREATE OR REPLACE FUNCTION medical.record_notification_measurement(
+    p_notification_id UUID,
+    p_value DECIMAL,
+    p_unit_id UUID,
+    p_apply_to_previous BOOLEAN DEFAULT false
+)
+RETURNS TABLE (
+    notifications_updated INTEGER,
+    measurements_created INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_user_id UUID;
+    v_variable_id UUID;
+    v_notifications_updated INTEGER := 0;
+    v_measurements_created INTEGER := 0;
+BEGIN
+    -- Get notification details
+    SELECT user_id, variable_id INTO v_user_id, v_variable_id
+    FROM medical.pending_notifications
+    WHERE id = p_notification_id;
+
+    -- Update this notification
+    UPDATE medical.pending_notifications
+    SET 
+        status = 'completed',
+        response_value = p_value,
+        response_unit_id = p_unit_id,
+        response_time = NOW(),
+        updated_at = NOW()
+    WHERE id = p_notification_id;
+
+    GET DIAGNOSTICS v_notifications_updated = ROW_COUNT;
+
+    -- If requested, update all previous pending notifications for this variable
+    IF p_apply_to_previous THEN
+        UPDATE medical.pending_notifications
+        SET 
+            status = 'completed',
+            response_value = p_value,
+            response_unit_id = p_unit_id,
+            response_time = NOW(),
+            updated_at = NOW()
+        WHERE user_id = v_user_id
+        AND variable_id = v_variable_id
+        AND status = 'pending'
+        AND scheduled_for < (SELECT scheduled_for FROM medical.pending_notifications WHERE id = p_notification_id);
+
+        GET DIAGNOSTICS v_notifications_updated = v_notifications_updated + ROW_COUNT;
+    END IF;
+
+    -- Create measurements for all completed notifications
+    INSERT INTO medical.variable_measurements (
+        user_id,
+        variable_id,
+        value,
+        unit_id,
+        measurement_time,
+        source,
+        notes
+    )
+    SELECT 
+        pn.user_id,
+        pn.variable_id,
+        pn.response_value,
+        pn.response_unit_id,
+        pn.scheduled_for,
+        'notification_response',
+        'Recorded from notification ID: ' || pn.id::text
+    FROM medical.pending_notifications pn
+    WHERE pn.id IN (
+        SELECT id FROM medical.pending_notifications
+        WHERE user_id = v_user_id
+        AND variable_id = v_variable_id
+        AND status = 'completed'
+        AND response_time = NOW()
+    );
+
+    GET DIAGNOSTICS v_measurements_created = ROW_COUNT;
+
+    RETURN QUERY SELECT v_notifications_updated, v_measurements_created;
+END;
+$$;
+
+-- Function to skip notifications
+CREATE OR REPLACE FUNCTION medical.skip_notifications(
+    p_notification_id UUID,
+    p_skip_reason TEXT,
+    p_skip_previous BOOLEAN DEFAULT false
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_user_id UUID;
+    v_variable_id UUID;
+    v_skipped_count INTEGER;
+BEGIN
+    -- Get notification details
+    SELECT user_id, variable_id INTO v_user_id, v_variable_id
+    FROM medical.pending_notifications
+    WHERE id = p_notification_id;
+
+    -- Update this notification
+    UPDATE medical.pending_notifications
+    SET 
+        status = 'skipped',
+        skip_reason = p_skip_reason,
+        updated_at = NOW()
+    WHERE id = p_notification_id;
+
+    -- If requested, skip all previous pending notifications for this variable
+    IF p_skip_previous THEN
+        UPDATE medical.pending_notifications
+        SET 
+            status = 'skipped',
+            skip_reason = p_skip_reason,
+            updated_at = NOW()
+        WHERE user_id = v_user_id
+        AND variable_id = v_variable_id
+        AND status = 'pending'
+        AND scheduled_for < (SELECT scheduled_for FROM medical.pending_notifications WHERE id = p_notification_id);
+    END IF;
+
+    GET DIAGNOSTICS v_skipped_count = ROW_COUNT;
+    RETURN v_skipped_count;
+END;
+$$;
+
+-- Function to generate notifications (to be called by application scheduler)
+CREATE OR REPLACE FUNCTION medical.generate_notifications(
+    p_start_time TIMESTAMPTZ,
+    p_end_time TIMESTAMPTZ
+)
+RETURNS TABLE (
+    notifications_created INTEGER,
+    users_affected INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_notifications_created INTEGER := 0;
+    v_users_affected INTEGER := 0;
+BEGIN
+    -- Create notifications for all active reminders in the time range
+    WITH inserted_notifications AS (
+        INSERT INTO medical.pending_notifications (
+            user_id,
+            reminder_id,
+            variable_id,
+            scheduled_for,
+            last_value,
+            last_unit_id
+        )
+        SELECT DISTINCT
+            mr.user_id,
+            mr.id,
+            mr.variable_id,
+            -- Calculate notification times based on reminder settings
+            date_trunc('hour', ts) + 
+                make_interval(mins => EXTRACT(MINUTE FROM unnest(mr.time_of_day))::int) AS scheduled_for,
+            -- Get last value for quick response
+            (
+                SELECT value 
+                FROM medical.variable_measurements vm
+                WHERE vm.user_id = mr.user_id
+                AND vm.variable_id = mr.variable_id
+                ORDER BY measurement_time DESC
+                LIMIT 1
+            ) as last_value,
+            (
+                SELECT unit_id 
+                FROM medical.variable_measurements vm
+                WHERE vm.user_id = mr.user_id
+                AND vm.variable_id = mr.variable_id
+                ORDER BY measurement_time DESC
+                LIMIT 1
+            ) as last_unit_id
+        FROM medical.measurement_reminders mr
+        CROSS JOIN generate_series(
+            p_start_time,
+            p_end_time,
+            '1 hour'::interval
+        ) AS ts
+        WHERE mr.is_active = true
+        AND CURRENT_DATE BETWEEN mr.start_date AND COALESCE(mr.end_date, CURRENT_DATE + '100 years'::interval)
+        AND (
+            -- Daily reminders
+            (mr.frequency = 'daily' AND (NOT mr.skip_weekends OR EXTRACT(DOW FROM ts) NOT IN (0, 6)))
+            OR
+            -- Weekly reminders
+            (mr.frequency = 'weekly' AND EXTRACT(DOW FROM ts) = ANY(mr.days_of_week))
+            OR
+            -- Monthly reminders
+            (mr.frequency = 'monthly' AND EXTRACT(DAY FROM ts) = mr.day_of_month)
+            OR
+            -- Custom cron schedule
+            (mr.frequency = 'custom' AND ts::text ~ mr.custom_cron)
+        )
+        ON CONFLICT (user_id, reminder_id, scheduled_for) DO NOTHING
+        RETURNING user_id
+    )
+    SELECT 
+        COUNT(*),
+        COUNT(DISTINCT user_id)
+    INTO v_notifications_created, v_users_affected
+    FROM inserted_notifications;
+
+    RETURN QUERY SELECT v_notifications_created, v_users_affected;
+END;
+$$;
+
+-- Enable RLS
+ALTER TABLE medical.notification_channels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical.measurement_reminders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical.reminder_channels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical.pending_notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical.notification_attempts ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+CREATE POLICY "Users can view their notification channels"
+    ON medical.notification_channels FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can manage their notification channels"
+    ON medical.notification_channels FOR ALL
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view their reminders"
+    ON medical.measurement_reminders FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can manage their reminders"
+    ON medical.measurement_reminders FOR ALL
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view their reminder channels"
+    ON medical.reminder_channels FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM medical.measurement_reminders mr
+        WHERE mr.id = reminder_id AND mr.user_id = auth.uid()
+    ));
+
+CREATE POLICY "Users can manage their reminder channels"
+    ON medical.reminder_channels FOR ALL
+    USING (EXISTS (
+        SELECT 1 FROM medical.measurement_reminders mr
+        WHERE mr.id = reminder_id AND mr.user_id = auth.uid()
+    ));
+
+CREATE POLICY "Users can view their notifications"
+    ON medical.pending_notifications FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their notifications"
+    ON medical.pending_notifications FOR UPDATE
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "System can insert notifications"
+    ON medical.pending_notifications FOR INSERT
+    WITH CHECK (true);
+
+CREATE POLICY "Users can view their notification attempts"
+    ON medical.notification_attempts FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM medical.pending_notifications pn
+        WHERE pn.id = notification_id AND pn.user_id = auth.uid()
+    )); 
