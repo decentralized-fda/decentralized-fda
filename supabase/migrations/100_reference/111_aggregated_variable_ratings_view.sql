@@ -1,41 +1,29 @@
--- Create aggregated ratings materialized view
+-- View for aggregating variable relationship ratings
 CREATE MATERIALIZED VIEW reference.aggregated_variable_ratings AS
+WITH relationship_stats AS (
+    SELECT 
+        r.predictor_variable_id,
+        r.outcome_variable_id,
+        COUNT(DISTINCT r.user_id) as number_of_users,
+        AVG(r.correlation_coefficient) as average_correlation,
+        AVG(r.confidence_score) as average_confidence,
+        SUM(CASE WHEN r.user_vote = 1 THEN 1 ELSE 0 END) as positive_votes,
+        SUM(CASE WHEN r.user_vote = -1 THEN 1 ELSE 0 END) as negative_votes,
+        SUM(CASE WHEN r.user_vote = 0 THEN 1 ELSE 0 END) as neutral_votes
+    FROM personal.user_variable_relationships r
+    GROUP BY r.predictor_variable_id, r.outcome_variable_id
+)
 SELECT 
-    vr.predictor_variable_id,
-    vr.outcome_variable_id,
-    v1.name AS predictor_variable_name,
-    v2.name AS outcome_variable_name,
-    COUNT(vr.id) AS total_ratings,
-
-    -- Effectiveness distribution
-    COUNT(CASE WHEN vr.effectiveness_rating = 'much_worse' THEN 1 END) AS much_worse_count,
-    COUNT(CASE WHEN vr.effectiveness_rating = 'worse' THEN 1 END) AS worse_count,
-    COUNT(CASE WHEN vr.effectiveness_rating = 'no_effect' THEN 1 END) AS no_effect_count,
-    COUNT(CASE WHEN vr.effectiveness_rating = 'better' THEN 1 END) AS better_count,
-    COUNT(CASE WHEN vr.effectiveness_rating = 'much_better' THEN 1 END) AS much_better_count,
-
-    -- Average numeric rating (1-5 scale)
-    AVG(vr.numeric_rating) AS avg_numeric_rating,
-
-    -- Side effects distribution
-    COUNT(CASE WHEN vr.side_effects_rating = 'none' THEN 1 END) AS no_side_effects_count,
-    COUNT(CASE WHEN vr.side_effects_rating = 'mild' THEN 1 END) AS mild_side_effects_count,
-    COUNT(CASE WHEN vr.side_effects_rating = 'moderate' THEN 1 END) AS moderate_side_effects_count,
-    COUNT(CASE WHEN vr.side_effects_rating = 'severe' THEN 1 END) AS severe_side_effects_count,
-    COUNT(CASE WHEN vr.side_effects_rating = 'intolerable' THEN 1 END) AS intolerable_side_effects_count,
-
-    -- Verified ratings count
-    COUNT(CASE WHEN vr.is_verified = TRUE THEN 1 END) AS verified_ratings_count
-FROM 
-    personal.user_variable_ratings vr
-JOIN 
-    reference.variables v1 ON vr.predictor_variable_id = v1.id
-JOIN 
-    reference.variables v2 ON vr.outcome_variable_id = v2.id
-WHERE 
-    vr.is_public = TRUE
-GROUP BY 
-    vr.predictor_variable_id, vr.outcome_variable_id, v1.name, v2.name;
+    rs.*,
+    p.name as predictor_name,
+    p.display_name as predictor_display_name,
+    o.name as outcome_name,
+    o.display_name as outcome_display_name,
+    (rs.positive_votes - rs.negative_votes)::float / NULLIF(rs.positive_votes + rs.negative_votes, 0) as vote_ratio,
+    NOW() as last_updated
+FROM relationship_stats rs
+JOIN reference.global_variables p ON rs.predictor_variable_id = p.id
+JOIN reference.global_variables o ON rs.outcome_variable_id = o.id;
 
 -- Create unique index for the materialized view
 CREATE UNIQUE INDEX idx_aggregated_ratings_variables 

@@ -2,79 +2,57 @@
 CREATE MATERIALIZED VIEW reference.variable_stats AS
 WITH measurement_stats AS (
     SELECT 
-        variable_id,
+        m.variable_id,
+        COUNT(DISTINCT m.user_id) as number_of_users,
         COUNT(*) as number_of_measurements,
-        COUNT(DISTINCT user_id) as number_of_users,
-        MIN(value) as minimum_recorded_value,
-        MAX(value) as maximum_recorded_value,
-        AVG(value) as mean,
-        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY value) as median,
-        MODE() WITHIN GROUP (ORDER BY value) as most_common_value,
-        STDDEV(value) as standard_deviation,
-        VAR_POP(value) as variance,
-        MIN(measurement_time) as earliest_measurement,
-        MAX(measurement_time) as latest_measurement,
-        AVG(EXTRACT(EPOCH FROM (measurement_time - LAG(measurement_time) OVER (PARTITION BY user_id, variable_id ORDER BY measurement_time)))) as average_seconds_between_measurements,
-        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY 
-            EXTRACT(EPOCH FROM (measurement_time - LAG(measurement_time) OVER (PARTITION BY user_id, variable_id ORDER BY measurement_time)))
-        ) as median_seconds_between_measurements
-    FROM personal.user_measurements
-    GROUP BY variable_id
-),
-rating_stats AS (
-    SELECT 
-        predictor_variable_id as variable_id,
-        COUNT(*) as number_of_predictor_ratings,
-        COUNT(DISTINCT user_id) as number_of_rating_users
-    FROM personal.user_variable_ratings
-    GROUP BY predictor_variable_id
-    UNION ALL
-    SELECT 
-        outcome_variable_id as variable_id,
-        COUNT(*) as number_of_outcome_ratings,
-        COUNT(DISTINCT user_id) as number_of_rating_users
-    FROM personal.user_variable_ratings
-    GROUP BY outcome_variable_id
+        MIN(m.value) as minimum_recorded_value,
+        MAX(m.value) as maximum_recorded_value,
+        AVG(m.value) as average_value,
+        STDDEV(m.value) as standard_deviation,
+        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY m.value) as percentile_25,
+        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY m.value) as percentile_50,
+        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY m.value) as percentile_75,
+        MIN(m.timestamp) as earliest_measurement,
+        MAX(m.timestamp) as latest_measurement
+    FROM personal.measurements m
+    GROUP BY m.variable_id
 ),
 relationship_stats AS (
     SELECT 
-        predictor_variable_id as variable_id,
-        COUNT(*) as number_of_relationships_as_cause
-    FROM reference.variable_relationships
-    GROUP BY predictor_variable_id
-    UNION ALL
-    SELECT 
-        outcome_variable_id as variable_id,
-        COUNT(*) as number_of_relationships_as_effect
-    FROM reference.variable_relationships
-    GROUP BY outcome_variable_id
+        v.id as variable_id,
+        COUNT(DISTINCT CASE WHEN r.predictor_variable_id = v.id THEN r.id END) as number_of_outcomes,
+        COUNT(DISTINCT CASE WHEN r.outcome_variable_id = v.id THEN r.id END) as number_of_predictors,
+        COUNT(DISTINCT CASE WHEN r.predictor_variable_id = v.id AND r.relationship_type = 'predicts' THEN r.id END) as number_of_strong_predictions,
+        COUNT(DISTINCT CASE WHEN r.predictor_variable_id = v.id AND r.relationship_type = 'may_predict' THEN r.id END) as number_of_weak_predictions
+    FROM reference.global_variables v
+    LEFT JOIN reference.variable_relationships r ON v.id = r.predictor_variable_id OR v.id = r.outcome_variable_id
+    GROUP BY v.id
 )
 SELECT 
     v.id,
     v.name,
-    ms.number_of_measurements,
-    ms.number_of_users,
+    v.display_name,
+    v.category_id,
+    v.data_type,
+    COALESCE(ms.number_of_users, 0) as number_of_users,
+    COALESCE(ms.number_of_measurements, 0) as number_of_measurements,
     ms.minimum_recorded_value,
     ms.maximum_recorded_value,
-    ms.mean,
-    ms.median,
-    ms.most_common_value,
+    ms.average_value,
     ms.standard_deviation,
-    ms.variance,
+    ms.percentile_25,
+    ms.percentile_50,
+    ms.percentile_75,
     ms.earliest_measurement,
     ms.latest_measurement,
-    ms.average_seconds_between_measurements,
-    ms.median_seconds_between_measurements,
-    COALESCE(rs1.number_of_predictor_ratings, 0) + COALESCE(rs2.number_of_outcome_ratings, 0) as total_ratings,
-    COALESCE(rel1.number_of_relationships_as_cause, 0) as relationships_as_cause,
-    COALESCE(rel2.number_of_relationships_as_effect, 0) as relationships_as_effect,
-    NOW() as calculated_at
-FROM reference.variables v
-LEFT JOIN measurement_stats ms ON ms.variable_id = v.id
-LEFT JOIN rating_stats rs1 ON rs1.variable_id = v.id
-LEFT JOIN rating_stats rs2 ON rs2.variable_id = v.id
-LEFT JOIN relationship_stats rel1 ON rel1.variable_id = v.id
-LEFT JOIN relationship_stats rel2 ON rel2.variable_id = v.id;
+    COALESCE(rs.number_of_outcomes, 0) as number_of_outcomes,
+    COALESCE(rs.number_of_predictors, 0) as number_of_predictors,
+    COALESCE(rs.number_of_strong_predictions, 0) as number_of_strong_predictions,
+    COALESCE(rs.number_of_weak_predictions, 0) as number_of_weak_predictions,
+    NOW() as last_updated
+FROM reference.global_variables v
+LEFT JOIN measurement_stats ms ON v.id = ms.variable_id
+LEFT JOIN relationship_stats rs ON v.id = rs.variable_id;
 
 -- Create index for better performance
 CREATE UNIQUE INDEX ON reference.variable_stats (id);
@@ -97,5 +75,5 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER refresh_variable_stats_trigger
-AFTER INSERT OR UPDATE OR DELETE ON personal.user_measurements
+AFTER INSERT OR UPDATE OR DELETE ON personal.measurements
 FOR EACH STATEMENT EXECUTE FUNCTION reference.trigger_refresh_variable_stats(); 
