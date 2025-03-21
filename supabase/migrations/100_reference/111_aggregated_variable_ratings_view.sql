@@ -1,10 +1,10 @@
 -- Create aggregated ratings materialized view
-CREATE MATERIALIZED VIEW medical_ref.aggregated_variable_ratings AS
+CREATE MATERIALIZED VIEW reference.aggregated_variable_ratings AS
 SELECT 
     vr.predictor_variable_id,
     vr.outcome_variable_id,
-    gv1.name AS predictor_variable_name,
-    gv2.name AS outcome_variable_name,
+    v1.name AS predictor_variable_name,
+    v2.name AS outcome_variable_name,
     COUNT(vr.id) AS total_ratings,
 
     -- Effectiveness distribution
@@ -27,16 +27,16 @@ SELECT
     -- Verified ratings count
     COUNT(CASE WHEN vr.is_verified = TRUE THEN 1 END) AS verified_ratings_count
 FROM 
-    medical.variable_ratings vr
+    personal.user_variable_ratings vr
 JOIN 
-    medical_ref.global_variables gv1 ON vr.predictor_variable_id = gv1.id
+    reference.variables v1 ON vr.predictor_variable_id = v1.id
 JOIN 
-    medical_ref.global_variables gv2 ON vr.outcome_variable_id = gv2.id
+    reference.variables v2 ON vr.outcome_variable_id = v2.id
 WHERE 
     vr.is_public = TRUE
 GROUP BY 
-    vr.predictor_variable_id, vr.outcome_variable_id, gv1.name, gv2.name;
+    vr.predictor_variable_id, vr.outcome_variable_id, v1.name, v2.name;
 
 -- Create unique index for the materialized view
 CREATE UNIQUE INDEX idx_aggregated_ratings_variables 
-ON medical_ref.aggregated_variable_ratings(predictor_variable_id, outcome_variable_id); 
+ON reference.aggregated_variable_ratings(predictor_variable_id, outcome_variable_id); 

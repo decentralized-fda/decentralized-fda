@@ -6,90 +6,87 @@
 CREATE MATERIALIZED VIEW personal.user_variable_relationship_stats AS
 WITH measurement_stats AS (
     SELECT 
-        r.id as relationship_id,
-        r.cause_variable_id,
-        r.effect_variable_id,
-        COUNT(DISTINCT m.id) as number_of_pairs,
-        COUNT(DISTINCT DATE(m.measurement_time)) as number_of_days,
-        AVG(CASE WHEN m.value > avg_m.avg_value THEN m.value END) as average_high_cause,
-        AVG(CASE WHEN m.value < avg_m.avg_value THEN m.value END) as average_low_cause,
-        AVG(m.value) as average_effect,
-        STDDEV(m.value) as effect_baseline_standard_deviation,
-        MIN(m.measurement_time) as earliest_measurement_start_at,
-        MAX(m.measurement_time) as latest_measurement_start_at
+        r.id AS relationship_id,
+        r.predictor_variable_id,
+        r.outcome_variable_id,
+        COUNT(DISTINCT DATE_TRUNC('day', pm.timestamp)) as number_of_days,
+        COUNT(DISTINCT pm.id) as number_of_predictor_measurements,
+        COUNT(DISTINCT om.id) as number_of_outcome_measurements,
+        COUNT(DISTINCT CASE WHEN pm.value > p.average_value THEN DATE_TRUNC('day', pm.timestamp) END) as high_predictor_days,
+        COUNT(DISTINCT CASE WHEN pm.value <= p.average_value THEN DATE_TRUNC('day', pm.timestamp) END) as low_predictor_days,
+        AVG(CASE WHEN pm.value > p.average_value THEN om.value END) as average_outcome_with_high_predictor,
+        AVG(CASE WHEN pm.value <= p.average_value THEN om.value END) as average_outcome_with_low_predictor,
+        STDDEV(om.value) as outcome_standard_deviation,
+        MIN(pm.timestamp) as earliest_measurement_start_at,
+        MAX(pm.timestamp) as latest_measurement_start_at
     FROM personal.user_variable_relationships r
-    JOIN personal.variable_measurements m ON m.variable_id = r.effect_variable_id
-    CROSS JOIN (
-        SELECT variable_id, AVG(value) as avg_value 
-        FROM personal.variable_measurements 
-        GROUP BY variable_id
-    ) avg_m ON avg_m.variable_id = m.variable_id
-    GROUP BY r.id, r.cause_variable_id, r.effect_variable_id
-),
-correlation_calcs AS (
-    SELECT 
-        ms.*,
-        corr(c.value, e.value) as forward_pearson_correlation_coefficient,
-        corr(e.value, c_prev.value) as reverse_pearson_correlation_coefficient,
-        CASE 
-            WHEN ABS(corr(c.value, e.value)) * SQRT(COUNT(*) - 2) / 
-                SQRT(1 - POWER(corr(c.value, e.value), 2)) > 1.96 
-            THEN true 
-            ELSE false 
-        END as is_statistically_significant
-    FROM measurement_stats ms
-    JOIN personal.variable_measurements c ON c.variable_id = ms.cause_variable_id
-    JOIN personal.variable_measurements e ON e.variable_id = ms.effect_variable_id 
-        AND e.measurement_time > c.measurement_time 
-        AND e.measurement_time <= c.measurement_time + INTERVAL '1 day'
-    LEFT JOIN personal.variable_measurements c_prev ON c_prev.variable_id = ms.cause_variable_id
-        AND c_prev.measurement_time < e.measurement_time
-    GROUP BY ms.relationship_id, ms.cause_variable_id, ms.effect_variable_id,
-             ms.number_of_pairs, ms.number_of_days, ms.average_high_cause,
-             ms.average_low_cause, ms.average_effect, ms.effect_baseline_standard_deviation,
-             ms.earliest_measurement_start_at, ms.latest_measurement_start_at
+    JOIN personal.measurements pm ON pm.variable_id = r.predictor_variable_id
+    JOIN personal.measurements om ON om.variable_id = r.outcome_variable_id
+        AND om.timestamp >= pm.timestamp + r.onset_delay
+        AND om.timestamp <= pm.timestamp + r.onset_delay + r.duration_of_action
+    JOIN personal.user_variables p ON p.variable_id = r.predictor_variable_id
+    GROUP BY r.id, r.predictor_variable_id, r.outcome_variable_id
 )
 SELECT 
-    cc.*,
-    CASE
-        WHEN ABS(forward_pearson_correlation_coefficient) > 0.6 THEN 'VERY STRONG'
-        WHEN ABS(forward_pearson_correlation_coefficient) > 0.4 THEN 'STRONG'
-        WHEN ABS(forward_pearson_correlation_coefficient) > 0.2 THEN 'MODERATE'
-        WHEN ABS(forward_pearson_correlation_coefficient) > 0.1 THEN 'WEAK'
-        ELSE 'VERY WEAK'
-    END as calculated_strength_level,
-    CASE
-        WHEN number_of_pairs > 100 AND is_statistically_significant THEN 'HIGH'
-        WHEN number_of_pairs > 30 AND is_statistically_significant THEN 'MEDIUM'
-        ELSE 'LOW'
-    END as calculated_confidence_level,
-    CASE
-        WHEN forward_pearson_correlation_coefficient > 0 THEN 'POSITIVE'
-        WHEN forward_pearson_correlation_coefficient < 0 THEN 'NEGATIVE'
-        ELSE 'NONE'
-    END as calculated_relationship
-FROM correlation_calcs cc;
+    relationship_id,
+    predictor_variable_id,
+    outcome_variable_id,
+    number_of_days,
+    number_of_predictor_measurements,
+    number_of_outcome_measurements,
+    high_predictor_days,
+    low_predictor_days,
+    average_outcome_with_high_predictor,
+    average_outcome_with_low_predictor,
+    outcome_standard_deviation,
+    earliest_measurement_start_at,
+    latest_measurement_start_at,
+    -- Calculate statistical significance
+    CASE 
+        WHEN outcome_standard_deviation = 0 THEN 0
+        ELSE (average_outcome_with_high_predictor - average_outcome_with_low_predictor) 
+             / (outcome_standard_deviation / SQRT(LEAST(high_predictor_days, low_predictor_days)))
+    END as t_statistic,
+    -- Calculate correlation strength
+    CASE 
+        WHEN high_predictor_days + low_predictor_days = 0 THEN 0
+        ELSE (average_outcome_with_high_predictor - average_outcome_with_low_predictor) 
+             / NULLIF(outcome_standard_deviation, 0)
+    END as correlation_strength
+FROM measurement_stats;
 
--- Create index for better performance
-CREATE INDEX ON personal.user_variable_relationship_stats (relationship_id);
+-- Create indexes for faster querying
+CREATE UNIQUE INDEX ON personal.user_variable_relationship_stats(relationship_id);
+CREATE INDEX ON personal.user_variable_relationship_stats(predictor_variable_id);
+CREATE INDEX ON personal.user_variable_relationship_stats(outcome_variable_id);
 
--- Create refresh function
-CREATE OR REPLACE FUNCTION personal.refresh_relationship_stats()
+-- Function to refresh the materialized view
+CREATE OR REPLACE FUNCTION personal.refresh_user_variable_relationship_stats()
 RETURNS void AS $$
 BEGIN
     REFRESH MATERIALIZED VIEW CONCURRENTLY personal.user_variable_relationship_stats;
 END;
 $$ LANGUAGE plpgsql;
 
--- Create trigger to refresh stats when measurements are updated
+-- Trigger to refresh stats when measurements are updated
 CREATE OR REPLACE FUNCTION personal.trigger_refresh_relationship_stats()
 RETURNS trigger AS $$
 BEGIN
-    PERFORM personal.refresh_relationship_stats();
-    RETURN NEW;
+    PERFORM personal.refresh_user_variable_relationship_stats();
+    RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER refresh_relationship_stats_trigger
-AFTER INSERT OR UPDATE OR DELETE ON personal.variable_measurements
-FOR EACH STATEMENT EXECUTE FUNCTION personal.trigger_refresh_relationship_stats(); 
+CREATE TRIGGER refresh_relationship_stats_on_measurement_change
+AFTER INSERT OR UPDATE OR DELETE ON personal.measurements
+FOR EACH STATEMENT
+EXECUTE FUNCTION personal.trigger_refresh_relationship_stats();
+
+COMMENT ON MATERIALIZED VIEW personal.user_variable_relationship_stats IS 'Statistical analysis of relationships between user variables based on measurements';
+COMMENT ON COLUMN personal.user_variable_relationship_stats.predictor_variable_id IS 'The variable being analyzed as a potential predictor';
+COMMENT ON COLUMN personal.user_variable_relationship_stats.outcome_variable_id IS 'The variable being analyzed for potential correlation with the predictor';
+COMMENT ON COLUMN personal.user_variable_relationship_stats.number_of_days IS 'Number of days with measurements for both variables';
+COMMENT ON COLUMN personal.user_variable_relationship_stats.average_outcome_with_high_predictor IS 'Average outcome value when predictor is above average';
+COMMENT ON COLUMN personal.user_variable_relationship_stats.average_outcome_with_low_predictor IS 'Average outcome value when predictor is below average';
+COMMENT ON COLUMN personal.user_variable_relationship_stats.t_statistic IS 'T-statistic for the difference in outcome means between high and low predictor values';
+COMMENT ON COLUMN personal.user_variable_relationship_stats.correlation_strength IS 'Standardized effect size (Cohen''s d) of predictor on outcome'; 
