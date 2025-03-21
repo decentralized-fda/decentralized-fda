@@ -41,6 +41,61 @@ INSERT INTO medical_ref.variable_categories (name, description, display_name) VA
 ('physical_activity', 'Physical activity tracking', 'Physical Activity');
 
 -- Medical Reference Schema - Units of Measurement
+ALTER TABLE medical_ref.units_of_measurement 
+ADD COLUMN slug varchar GENERATED ALWAYS AS (
+    lower(regexp_replace(name, '[^a-zA-Z0-9]+', '-', 'g'))
+) STORED,
+ADD COLUMN minimum_value double precision,
+ADD COLUMN maximum_value double precision,
+ADD COLUMN deleted_at timestamp,
+ADD COLUMN sort_order integer DEFAULT 0,
+ADD COLUMN conversion_steps text;
+
+-- Update conversion steps for temperature units
+UPDATE medical_ref.units_of_measurement 
+SET conversion_steps = 'to_si: value + 273.15; from_si: value - 273.15'
+WHERE ucum_code = 'Cel';
+
+UPDATE medical_ref.units_of_measurement 
+SET conversion_steps = 'to_si: (value - 32) * 5/9 + 273.15; from_si: (value - 273.15) * 9/5 + 32'
+WHERE ucum_code = '[degF]';
+
+-- Set reasonable min/max values for common measurements
+UPDATE medical_ref.units_of_measurement 
+SET minimum_value = 0, maximum_value = 1000
+WHERE unit_type = 'mass';
+
+UPDATE medical_ref.units_of_measurement 
+SET minimum_value = 0, maximum_value = 500
+WHERE unit_type = 'volume';
+
+UPDATE medical_ref.units_of_measurement 
+SET minimum_value = -20, maximum_value = 50
+WHERE ucum_code = 'Cel';
+
+UPDATE medical_ref.units_of_measurement 
+SET minimum_value = -4, maximum_value = 122
+WHERE ucum_code = '[degF]';
+
+UPDATE medical_ref.units_of_measurement 
+SET minimum_value = 0, maximum_value = 300
+WHERE ucum_code = 'mm[Hg]';
+
+-- Set sort order for common units
+UPDATE medical_ref.units_of_measurement 
+SET sort_order = CASE 
+    WHEN ucum_code = 'mg' THEN 1
+    WHEN ucum_code = 'g' THEN 2
+    WHEN ucum_code = 'kg' THEN 3
+    WHEN ucum_code = '[lb_av]' THEN 4
+    WHEN ucum_code = 'mL' THEN 1
+    WHEN ucum_code = 'L' THEN 2
+    WHEN ucum_code = 'Cel' THEN 1
+    WHEN ucum_code = '[degF]' THEN 2
+    ELSE 99
+END;
+
+-- Mass/Weight units
 INSERT INTO medical_ref.units_of_measurement (
     name, 
     symbol, 
@@ -51,7 +106,6 @@ INSERT INTO medical_ref.units_of_measurement (
     is_si_unit,
     display_precision
 ) VALUES
--- Mass/Weight units
 ('milligram', 'mg', 'mg', 'Weight in milligrams', 'mass', 0.001, false, 2),
 ('gram', 'g', 'g', 'Weight in grams', 'mass', 1.0, true, 2),
 ('kilogram', 'kg', 'kg', 'Weight in kilograms', 'mass', 1000.0, false, 1),
