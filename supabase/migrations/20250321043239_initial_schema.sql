@@ -39,7 +39,8 @@ CREATE TABLE core.profiles (
     contact_name TEXT,
     user_type TEXT NOT NULL CHECK (user_type IN ('patient', 'doctor', 'sponsor', 'admin')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Addresses
@@ -84,7 +85,8 @@ CREATE TABLE core.user_groups (
     description TEXT,
     created_by UUID REFERENCES core.profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- User Group Members
@@ -93,6 +95,8 @@ CREATE TABLE core.user_group_members (
     user_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
     role TEXT CHECK (role IN ('member', 'admin')),
     joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE,
     
     PRIMARY KEY (group_id, user_id)
 );
@@ -111,6 +115,8 @@ CREATE TABLE core.user_consents (
     revocation_date TIMESTAMP WITH TIME ZONE,
     notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE,
     
     UNIQUE(user_id, consent_type, protocol_id, consent_version)
 );
@@ -126,7 +132,8 @@ CREATE TABLE core.data_sharing_agreements (
     expiration_date TIMESTAMP WITH TIME ZONE,
     created_by UUID REFERENCES core.profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- User Data Exports
@@ -173,6 +180,8 @@ CREATE TABLE core.tagged_items (
     item_id UUID NOT NULL,
     tagged_by UUID REFERENCES core.profiles(id) ON DELETE SET NULL,
     tagged_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE,
     
     PRIMARY KEY (tag_id, item_type, item_id)
 );
@@ -188,7 +197,11 @@ CREATE TABLE core.audit_trail (
     new_values JSONB,
     performed_by UUID REFERENCES core.profiles(id) ON DELETE SET NULL,
     ip_address TEXT,
-    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    session_id UUID REFERENCES core.audit_sessions(id) ON DELETE SET NULL,
+    correlation_id TEXT,
+    change_reason TEXT,
+    field_changes JSONB
 );
 
 -- =============================================
@@ -207,7 +220,8 @@ CREATE TABLE core.integration_providers (
     api_base_url TEXT,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Integration Connections (using Supabase auth for OAuth)
@@ -226,6 +240,7 @@ CREATE TABLE core.integration_connections (
     metadata JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE,
     
     UNIQUE(user_id, provider_id)
 );
@@ -421,6 +436,7 @@ CREATE TABLE medical.user_variables (
     end_date TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE,
     
     UNIQUE(user_id, global_variable_id)
 );
@@ -434,7 +450,9 @@ CREATE TABLE medical.measurement_batches (
     import_date TIMESTAMP WITH TIME ZONE NOT NULL,
     record_count INTEGER NOT NULL,
     notes TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Measurements
@@ -451,7 +469,8 @@ CREATE TABLE medical.measurements (
     source TEXT,
     source_id TEXT,
     batch_id UUID REFERENCES medical.measurement_batches(id) ON DELETE SET NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- User Variable Relationships
@@ -471,7 +490,9 @@ CREATE TABLE medical.user_variable_relationships (
     onset_delay TEXT CHECK (onset_delay IN ('immediate', 'minutes', 'hours', 'days', 'weeks', 'unknown')),
     notes TEXT,
     
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Variable Ratings
@@ -507,6 +528,7 @@ CREATE TABLE medical.variable_ratings (
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE,
     
     UNIQUE(user_id, variable_id, target_variable_id)
 );
@@ -531,7 +553,10 @@ CREATE TABLE medical.rating_comments (
     parent_comment_id UUID REFERENCES medical.rating_comments(id) ON DELETE CASCADE,
     is_hidden BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE,
+    
+    UNIQUE(rating_id, user_id)
 );
 
 -- Rating Flags
@@ -567,7 +592,8 @@ CREATE TABLE medical.prescriptions (
     end_date TIMESTAMP WITH TIME ZONE,
     trial_id UUID, -- Will reference trials.study_protocols later
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Prescription Fills
@@ -597,7 +623,8 @@ CREATE TABLE medical.lab_test_orders (
     trial_id UUID, -- Will reference trials.study_protocols later
     visit_id UUID, -- Will reference trials.subject_visits later
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Lab Test Order Items
@@ -607,7 +634,8 @@ CREATE TABLE medical.lab_test_order_items (
     lab_test_id UUID NOT NULL REFERENCES medical_ref.lab_tests(id) ON DELETE RESTRICT,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'collected', 'in_progress', 'completed', 'cancelled')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Lab Results
@@ -656,7 +684,8 @@ CREATE TABLE trials.study_protocols (
     start_date TIMESTAMP WITH TIME ZONE,
     end_date TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Now add foreign key reference to core.user_consents
@@ -669,7 +698,8 @@ CREATE TABLE trials.study_arms (
     name TEXT NOT NULL,
     description TEXT,
     arm_type TEXT CHECK (arm_type IN ('experimental', 'active_comparator', 'placebo_comparator', 'sham_comparator', 'no_intervention', 'other')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Study Interventions
@@ -684,7 +714,8 @@ CREATE TABLE trials.study_interventions (
     dosage TEXT,
     frequency TEXT,
     duration TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Subject Enrollments
@@ -700,8 +731,10 @@ CREATE TABLE trials.subject_enrollments (
     site_id TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE,
     
-    UNIQUE(protocol_id, subject_id)
+    UNIQUE(protocol_id, subject_id),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Adverse Events
@@ -720,7 +753,8 @@ CREATE TABLE trials.adverse_events (
     outcome TEXT CHECK (outcome IN ('recovered', 'recovering', 'not_recovered', 'recovered_with_sequelae', 'fatal', 'unknown')),
     reported_by UUID REFERENCES core.profiles(id) ON DELETE SET NULL,
     reported_date TIMESTAMP WITH TIME ZONE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Study Visits
@@ -734,7 +768,8 @@ CREATE TABLE trials.study_visits (
     window_before INTEGER,
     window_after INTEGER,
     required_procedures JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Subject Visits
@@ -746,7 +781,8 @@ CREATE TABLE trials.subject_visits (
     status TEXT CHECK (status IN ('scheduled', 'completed', 'missed', 'rescheduled')),
     performed_by UUID REFERENCES core.profiles(id) ON DELETE SET NULL,
     notes TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Protocol Deviations
@@ -760,7 +796,8 @@ CREATE TABLE trials.protocol_deviations (
     corrective_action TEXT,
     preventative_action TEXT,
     reported_by UUID REFERENCES core.profiles(id) ON DELETE SET NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Electronic Case Report Forms
@@ -786,7 +823,8 @@ CREATE TABLE trials.ecrf_submissions (
     verified_by UUID REFERENCES core.profiles(id) ON DELETE SET NULL,
     verification_date TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Data Queries
@@ -805,7 +843,8 @@ CREATE TABLE trials.data_queries (
     resolved_by UUID REFERENCES core.profiles(id) ON DELETE SET NULL,
     resolution_date TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Trial Subsidies
@@ -820,7 +859,8 @@ CREATE TABLE trials.trial_subsidies (
     description TEXT,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- =============================================
@@ -887,7 +927,8 @@ CREATE TABLE commerce.orders (
     prescription_id UUID REFERENCES medical.prescriptions(id) ON DELETE SET NULL,
     trial_id UUID REFERENCES trials.study_protocols(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Order Items
@@ -2138,3 +2179,24 @@ CREATE INDEX idx_oauth2_access_tokens_client ON core.oauth2_access_tokens(client
 CREATE INDEX idx_oauth2_authorization_codes_code ON core.oauth2_authorization_codes(code);
 CREATE INDEX idx_oauth2_client_events_client ON core.oauth2_client_events(client_id);
 CREATE INDEX idx_oauth2_client_events_user ON core.oauth2_client_events(user_id);
+
+-- Add validation constraints
+ALTER TABLE core.profiles
+    ADD CONSTRAINT email_format CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
+
+ALTER TABLE core.addresses
+    ADD CONSTRAINT phone_format CHECK (phone IS NULL OR phone ~* '^\+?[1-9]\d{1,14}$');
+
+ALTER TABLE trials.study_protocols
+    ADD CONSTRAINT valid_protocol_dates CHECK (
+        (start_date IS NULL AND end_date IS NULL) OR
+        (start_date IS NOT NULL AND end_date IS NULL) OR
+        (start_date IS NOT NULL AND end_date IS NOT NULL AND end_date > start_date)
+    );
+
+ALTER TABLE medical.prescriptions
+    ADD CONSTRAINT valid_prescription_dates CHECK (
+        (start_date IS NULL AND end_date IS NULL) OR
+        (start_date IS NOT NULL AND end_date IS NULL) OR
+        (start_date IS NOT NULL AND end_date IS NOT NULL AND end_date > start_date)
+    );
