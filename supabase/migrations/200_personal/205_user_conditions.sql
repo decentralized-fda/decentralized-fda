@@ -4,17 +4,18 @@
 -- Links to standard condition variables in the reference schema
 --
 CREATE TABLE personal.user_conditions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
-    condition_variable_id UUID NOT NULL REFERENCES reference.variables(id),
-    onset_at TIMESTAMP WITH TIME ZONE,
-    resolution_at TIMESTAMP WITH TIME ZONE,
-    status VARCHAR(20) NOT NULL,
-    severity INTEGER CHECK (severity BETWEEN 1 AND 5),
-    notes TEXT,
-    deleted_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    id bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    user_id uuid NOT NULL REFERENCES core.profiles(id),
+    condition_variable_id bigint NOT NULL REFERENCES reference.global_variables(id),
+    onset_at timestamptz NOT NULL,
+    resolution_at timestamptz,
+    status text NOT NULL CHECK (status IN ('active', 'resolved', 'recurring')),
+    severity integer CHECK (severity BETWEEN 1 AND 5),
+    notes text,
+    deleted_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, condition_variable_id, onset_at)
 );
 
 -- Enable RLS

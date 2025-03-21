@@ -4,19 +4,19 @@
 -- These can be aggregated into global treatment effectiveness statistics
 --
 CREATE TABLE personal.user_treatment_effectiveness_ratings (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
-    treatment_variable_id UUID NOT NULL REFERENCES reference.variables(id),
-    condition_variable_id UUID NOT NULL REFERENCES reference.variables(id),
-    effectiveness_rating INTEGER CHECK (effectiveness_rating BETWEEN 1 AND 5),
-    side_effect_rating INTEGER CHECK (side_effect_rating BETWEEN 1 AND 5),
-    adherence_rating INTEGER CHECK (adherence_rating BETWEEN 1 AND 5),
-    cost_rating INTEGER CHECK (cost_rating BETWEEN 1 AND 5),
-    review_text TEXT,
-    is_public BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    id bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    user_id uuid NOT NULL REFERENCES core.profiles(id),
+    treatment_variable_id bigint NOT NULL REFERENCES reference.global_variables(id),
+    condition_variable_id bigint NOT NULL REFERENCES reference.global_variables(id),
+    effectiveness_rating text CHECK (effectiveness_rating IN ('much_worse', 'worse', 'no_effect', 'better', 'much_better')),
+    side_effects_rating text CHECK (side_effects_rating IN ('none', 'mild', 'moderate', 'severe', 'intolerable')),
+    adherence_rating text CHECK (adherence_rating IN ('never', 'rarely', 'sometimes', 'usually', 'always')),
+    cost_rating text CHECK (cost_rating IN ('very_expensive', 'expensive', 'moderate', 'affordable', 'very_affordable')),
+    notes text,
+    is_public boolean NOT NULL DEFAULT false,
+    deleted_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, treatment_variable_id, condition_variable_id)
 );
 

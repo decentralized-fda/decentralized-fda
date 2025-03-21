@@ -4,29 +4,22 @@
 -- These are linked to specific users but may come from third-party data
 --
 CREATE TABLE personal.user_external_treatment_effectiveness_ratings (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
-    treatment_variable_id UUID NOT NULL REFERENCES reference.variables(id),
-    condition_variable_id UUID NOT NULL REFERENCES reference.variables(id),
-    data_source VARCHAR(50) NOT NULL,
-    data_source_id VARCHAR(100),
-    effectiveness_score DECIMAL CHECK (effectiveness_score BETWEEN 0 AND 100),
-    number_of_participants INTEGER,
-    study_design VARCHAR(50),
-    study_quality_score DECIMAL CHECK (study_quality_score BETWEEN 0 AND 100),
-    confidence_interval_min DECIMAL,
-    confidence_interval_max DECIMAL,
-    p_value DECIMAL CHECK (p_value BETWEEN 0 AND 1),
-    snippet_text TEXT,
-    snippet_source_url TEXT,
-    full_study_url TEXT,
-    full_study_pdf_url TEXT,
-    publication_date DATE,
-    is_public BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(user_id, data_source, data_source_id)
+    id bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    user_id uuid NOT NULL REFERENCES core.profiles(id),
+    treatment_variable_id bigint NOT NULL REFERENCES reference.global_variables(id),
+    condition_variable_id bigint NOT NULL REFERENCES reference.global_variables(id),
+    source_type text NOT NULL CHECK (source_type IN ('doctor', 'research', 'anecdotal')),
+    source_name text,
+    source_url text,
+    effectiveness_rating text CHECK (effectiveness_rating IN ('much_worse', 'worse', 'no_effect', 'better', 'much_better')),
+    side_effects_rating text CHECK (side_effects_rating IN ('none', 'mild', 'moderate', 'severe', 'intolerable')),
+    confidence_level text CHECK (confidence_level IN ('low', 'medium', 'high')),
+    notes text,
+    is_public boolean NOT NULL DEFAULT false,
+    deleted_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, treatment_variable_id, condition_variable_id, source_type, source_name)
 );
 
 -- Enable RLS
@@ -49,10 +42,10 @@ CREATE INDEX idx_external_ratings_condition
     ON personal.user_external_treatment_effectiveness_ratings(condition_variable_id);
     
 CREATE INDEX idx_external_ratings_data_source 
-    ON personal.user_external_treatment_effectiveness_ratings(data_source);
+    ON personal.user_external_treatment_effectiveness_ratings(source_type);
 
 CREATE INDEX idx_external_ratings_effectiveness 
-    ON personal.user_external_treatment_effectiveness_ratings(effectiveness_score);
+    ON personal.user_external_treatment_effectiveness_ratings(effectiveness_rating);
 
 CREATE INDEX idx_external_ratings_study_quality 
-    ON personal.user_external_treatment_effectiveness_ratings(study_quality_score); 
+    ON personal.user_external_treatment_effectiveness_ratings(confidence_level); 
