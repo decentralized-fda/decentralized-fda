@@ -319,7 +319,7 @@ CREATE TABLE medical_ref.variable_ingredients (
     parent_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
     ingredient_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
     amount DECIMAL,
-    unit TEXT,
+    unit_id UUID REFERENCES medical_ref.units_of_measurement(id) ON DELETE RESTRICT,
     proportion DECIMAL,
     is_active_ingredient BOOLEAN DEFAULT FALSE,
     notes TEXT,
@@ -445,7 +445,7 @@ CREATE TABLE medical.measurements (
     user_variable_id UUID REFERENCES medical.user_variables(id) ON DELETE SET NULL,
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
     value DECIMAL,
-    unit TEXT,
+    unit_id UUID REFERENCES medical_ref.units_of_measurement(id) ON DELETE RESTRICT,
     duration_minutes INTEGER,
     notes TEXT,
     source TEXT,
@@ -615,7 +615,7 @@ CREATE TABLE medical.lab_results (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     order_item_id UUID NOT NULL REFERENCES medical.lab_test_order_items(id) ON DELETE CASCADE,
     result_value TEXT NOT NULL,
-    unit TEXT,
+    unit_id UUID REFERENCES medical_ref.units_of_measurement(id) ON DELETE RESTRICT,
     reference_range TEXT,
     is_abnormal BOOLEAN,
     result_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -1363,6 +1363,353 @@ CREATE INDEX IF NOT EXISTS idx_patient_subsidies_trial ON finance.patient_subsid
 CREATE INDEX IF NOT EXISTS idx_patient_subsidies_subsidy ON finance.patient_subsidies(trial_subsidy_id);
 
 -- =============================================
+-- ROW LEVEL SECURITY POLICIES
+-- =============================================
+
+-- Enable RLS on core tables
+ALTER TABLE core.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.addresses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.user_permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.user_consents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.notifications ENABLE ROW LEVEL SECURITY;
+
+-- Enable RLS on medical tables
+ALTER TABLE medical.measurements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical.user_variables ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical.prescriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical.lab_test_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical.lab_results ENABLE ROW LEVEL SECURITY;
+
+-- Profiles policies
+CREATE POLICY "Users can view their own profile"
+    ON core.profiles FOR SELECT
+    USING (auth.uid() = id);
+
+CREATE POLICY "Users can update their own profile"
+    ON core.profiles FOR UPDATE
+    USING (auth.uid() = id);
+
+-- Addresses policies
+CREATE POLICY "Users can view their own addresses"
+    ON core.addresses FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can manage their own addresses"
+    ON core.addresses FOR ALL
+    USING (auth.uid() = user_id);
+
+-- Medical measurements policies
+CREATE POLICY "Users can view their own measurements"
+    ON medical.measurements FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own measurements"
+    ON medical.measurements FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Doctors can view patient measurements"
+    ON medical.measurements FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM core.profiles
+            WHERE id = auth.uid()
+            AND user_type = 'doctor'
+            AND EXISTS (
+                SELECT 1 FROM core.user_permissions
+                WHERE user_id = auth.uid()
+                AND resource_type = 'patient'
+                AND resource_id = medical.measurements.user_id
+                AND permission_level IN ('read', 'write', 'admin')
+            )
+        )
+    );
+
+-- Prescriptions policies
+CREATE POLICY "Patients can view their own prescriptions"
+    ON medical.prescriptions FOR SELECT
+    USING (auth.uid() = patient_id);
+
+CREATE POLICY "Doctors can manage prescriptions they created"
+    ON medical.prescriptions FOR ALL
+    USING (auth.uid() = prescriber_id);
+
+CREATE POLICY "Doctors can view patient prescriptions"
+    ON medical.prescriptions FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM core.profiles
+            WHERE id = auth.uid()
+            AND user_type = 'doctor'
+            AND EXISTS (
+                SELECT 1 FROM core.user_permissions
+                WHERE user_id = auth.uid()
+                AND resource_type = 'patient'
+                AND resource_id = medical.prescriptions.patient_id
+                AND permission_level IN ('read', 'write', 'admin')
+            )
+        )
+    );
+
+-- Lab test orders policies
+CREATE POLICY "Patients can view their own lab tests"
+    ON medical.lab_test_orders FOR SELECT
+    USING (auth.uid() = patient_id);
+
+CREATE POLICY "Doctors can manage lab tests they ordered"
+    ON medical.lab_test_orders FOR ALL
+    USING (auth.uid() = ordering_provider_id);
+
+-- Lab results policies
+CREATE POLICY "Patients can view their own lab results"
+    ON medical.lab_results FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM medical.lab_test_orders lto
+            JOIN medical.lab_test_order_items ltoi ON lto.id = ltoi.order_id
+            WHERE ltoi.id = medical.lab_results.order_item_id
+            AND lto.patient_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Doctors can view and manage lab results for their patients"
+    ON medical.lab_results FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1 FROM medical.lab_test_orders lto
+            JOIN medical.lab_test_order_items ltoi ON lto.id = ltoi.order_id
+            WHERE ltoi.id = medical.lab_results.order_item_id
+            AND lto.ordering_provider_id = auth.uid()
+        )
+    );
+
+-- User consents policies
+CREATE POLICY "Users can view their own consents"
+    ON core.user_consents FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can manage their own consents"
+    ON core.user_consents FOR ALL
+    USING (auth.uid() = user_id);
+
+-- Notifications policies
+CREATE POLICY "Users can view their own notifications"
+    ON core.notifications FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can mark their notifications as read"
+    ON core.notifications FOR UPDATE
+    USING (auth.uid() = user_id)
+    WITH CHECK (
+        auth.uid() = user_id
+        AND (
+            -- Only allow updating is_read field
+            NEW.id = OLD.id
+            AND NEW.user_id = OLD.user_id
+            AND NEW.title = OLD.title
+            AND NEW.message = OLD.message
+            AND NEW.notification_type = OLD.notification_type
+            AND NEW.related_resource_type = OLD.related_resource_type
+            AND NEW.related_resource_id = OLD.related_resource_id
+            AND NEW.created_at = OLD.created_at
+        )
+    );
+
+-- Additional RLS Policies
+
+-- Enable RLS on additional core tables
+ALTER TABLE core.user_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.user_group_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.data_sharing_agreements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.user_data_exports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.integration_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.integration_sync_logs ENABLE ROW LEVEL SECURITY;
+
+-- Enable RLS on additional medical tables
+ALTER TABLE medical.measurement_batches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical.user_variable_relationships ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical.variable_ratings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical.rating_votes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical.rating_comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical.rating_flags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE medical.prescription_fills ENABLE ROW LEVEL SECURITY;
+
+-- Enable RLS on trials tables
+ALTER TABLE trials.subject_enrollments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trials.adverse_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trials.subject_visits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trials.protocol_deviations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trials.ecrf_submissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trials.data_queries ENABLE ROW LEVEL SECURITY;
+
+-- Commerce schema policies
+CREATE POLICY "Users can view their orders"
+    ON commerce.orders FOR SELECT
+    USING (user_id = auth.uid());
+
+CREATE POLICY "Users can view their order items"
+    ON commerce.order_items FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM commerce.orders
+        WHERE id = commerce.order_items.order_id
+        AND user_id = auth.uid()
+    ));
+
+-- Finance schema policies
+CREATE POLICY "Users can view their payment methods"
+    ON finance.payment_methods FOR SELECT
+    USING (user_id = auth.uid());
+
+CREATE POLICY "Users can manage their payment methods"
+    ON finance.payment_methods FOR ALL
+    USING (user_id = auth.uid());
+
+CREATE POLICY "Users can view their donations"
+    ON finance.donations FOR SELECT
+    USING (donor_id = auth.uid() OR is_anonymous = true);
+
+CREATE POLICY "Users can view their transactions"
+    ON finance.transactions FOR SELECT
+    USING (user_id = auth.uid());
+
+CREATE POLICY "Users can view their subsidies"
+    ON finance.patient_subsidies FOR SELECT
+    USING (patient_id = auth.uid());
+
+-- Core schema additional policies
+CREATE POLICY "Users can view groups they are members of"
+    ON core.user_groups FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM core.user_group_members
+        WHERE group_id = core.user_groups.id
+        AND user_id = auth.uid()
+    ));
+
+CREATE POLICY "Group admins can manage their groups"
+    ON core.user_groups FOR ALL
+    USING (EXISTS (
+        SELECT 1 FROM core.user_group_members
+        WHERE group_id = core.user_groups.id
+        AND user_id = auth.uid()
+        AND role = 'admin'
+    ));
+
+CREATE POLICY "Users can view their group memberships"
+    ON core.user_group_members FOR SELECT
+    USING (user_id = auth.uid());
+
+CREATE POLICY "Users can view their data exports"
+    ON core.user_data_exports FOR SELECT
+    USING (user_id = auth.uid() OR requested_by = auth.uid());
+
+CREATE POLICY "Users can view their integrations"
+    ON core.integration_connections FOR SELECT
+    USING (user_id = auth.uid());
+
+CREATE POLICY "Users can manage their integrations"
+    ON core.integration_connections FOR ALL
+    USING (user_id = auth.uid());
+
+CREATE POLICY "Users can view their sync logs"
+    ON core.integration_sync_logs FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM core.integration_connections
+        WHERE id = core.integration_sync_logs.connection_id
+        AND user_id = auth.uid()
+    ));
+
+-- Medical schema additional policies
+CREATE POLICY "Users can view their measurement batches"
+    ON medical.measurement_batches FOR SELECT
+    USING (user_id = auth.uid());
+
+CREATE POLICY "Users can manage their variable relationships"
+    ON medical.user_variable_relationships FOR ALL
+    USING (user_id = auth.uid());
+
+CREATE POLICY "Users can view their ratings"
+    ON medical.variable_ratings FOR SELECT
+    USING (user_id = auth.uid() OR is_public = true);
+
+CREATE POLICY "Users can manage their ratings"
+    ON medical.variable_ratings FOR ALL
+    USING (user_id = auth.uid());
+
+CREATE POLICY "Users can manage their votes"
+    ON medical.rating_votes FOR ALL
+    USING (user_id = auth.uid());
+
+CREATE POLICY "Users can view public comments"
+    ON medical.rating_comments FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM medical.variable_ratings
+            WHERE id = medical.rating_comments.rating_id
+            AND (is_public = true OR user_id = auth.uid())
+        )
+    );
+
+CREATE POLICY "Users can manage their comments"
+    ON medical.rating_comments FOR ALL
+    USING (user_id = auth.uid());
+
+CREATE POLICY "Users can view their prescription fills"
+    ON medical.prescription_fills FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM medical.prescriptions
+        WHERE id = medical.prescription_fills.prescription_id
+        AND patient_id = auth.uid()
+    ));
+
+-- Trials schema policies
+CREATE POLICY "Users can view their trial enrollments"
+    ON trials.subject_enrollments FOR SELECT
+    USING (subject_id = auth.uid());
+
+CREATE POLICY "Users can view their adverse events"
+    ON trials.adverse_events FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM trials.subject_enrollments
+        WHERE id = trials.adverse_events.enrollment_id
+        AND subject_id = auth.uid()
+    ));
+
+CREATE POLICY "Users can view their trial visits"
+    ON trials.subject_visits FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM trials.subject_enrollments
+        WHERE id = trials.subject_visits.enrollment_id
+        AND subject_id = auth.uid()
+    ));
+
+CREATE POLICY "Users can view their protocol deviations"
+    ON trials.protocol_deviations FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM trials.subject_enrollments
+        WHERE id = trials.protocol_deviations.enrollment_id
+        AND subject_id = auth.uid()
+    ));
+
+CREATE POLICY "Users can view their eCRF submissions"
+    ON trials.ecrf_submissions FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM trials.subject_enrollments
+        WHERE id = trials.ecrf_submissions.enrollment_id
+        AND subject_id = auth.uid()
+    ));
+
+CREATE POLICY "Users can view their data queries"
+    ON trials.data_queries FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM trials.ecrf_submissions
+        WHERE id = trials.data_queries.ecrf_submission_id
+        AND EXISTS (
+            SELECT 1 FROM trials.subject_enrollments
+            WHERE id = trials.ecrf_submissions.enrollment_id
+            AND subject_id = auth.uid()
+        )
+    ));
+
+-- =============================================
 -- SEED DATA - Basic categories
 -- =============================================
 
@@ -1513,3 +1860,281 @@ INSERT INTO core.integration_providers (
     true
 )
 ON CONFLICT (provider_name) DO NOTHING;
+
+-- Additional RLS Policies for Administrative Access
+CREATE POLICY "Admins can access all profiles"
+    ON core.profiles FOR ALL
+    USING (EXISTS (
+        SELECT 1 FROM core.profiles
+        WHERE id = auth.uid()
+        AND user_type = 'admin'
+    ));
+
+CREATE POLICY "Admins can access all medical data"
+    ON medical.measurements FOR ALL
+    USING (EXISTS (
+        SELECT 1 FROM core.profiles
+        WHERE id = auth.uid()
+        AND user_type = 'admin'
+    ));
+
+-- Enhanced Doctor Access Policies
+CREATE POLICY "Doctors can view patient variable relationships"
+    ON medical.user_variable_relationships FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM core.profiles
+        WHERE id = auth.uid()
+        AND user_type = 'doctor'
+        AND EXISTS (
+            SELECT 1 FROM core.user_permissions
+            WHERE user_id = auth.uid()
+            AND resource_type = 'patient'
+            AND resource_id = medical.user_variable_relationships.user_id
+            AND permission_level IN ('read', 'write', 'admin')
+        )
+    ));
+
+CREATE POLICY "Doctors can view patient measurement batches"
+    ON medical.measurement_batches FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM core.profiles
+        WHERE id = auth.uid()
+        AND user_type = 'doctor'
+        AND EXISTS (
+            SELECT 1 FROM core.user_permissions
+            WHERE user_id = auth.uid()
+            AND resource_type = 'patient'
+            AND resource_id = medical.measurement_batches.user_id
+            AND permission_level IN ('read', 'write', 'admin')
+        )
+    ));
+
+-- Trial Staff Access Policies
+CREATE POLICY "Trial staff can access trial enrollments"
+    ON trials.subject_enrollments FOR ALL
+    USING (EXISTS (
+        SELECT 1 FROM core.user_permissions
+        WHERE user_id = auth.uid()
+        AND resource_type = 'trial'
+        AND resource_id = trials.subject_enrollments.protocol_id
+        AND permission_level IN ('write', 'admin')
+    ));
+
+CREATE POLICY "Trial staff can access adverse events"
+    ON trials.adverse_events FOR ALL
+    USING (EXISTS (
+        SELECT 1 FROM trials.subject_enrollments se
+        JOIN core.user_permissions up ON up.resource_id = se.protocol_id
+        WHERE se.id = trials.adverse_events.enrollment_id
+        AND up.user_id = auth.uid()
+        AND up.resource_type = 'trial'
+        AND up.permission_level IN ('write', 'admin')
+    ));
+
+CREATE POLICY "Trial staff can access subject visits"
+    ON trials.subject_visits FOR ALL
+    USING (EXISTS (
+        SELECT 1 FROM trials.subject_enrollments se
+        JOIN core.user_permissions up ON up.resource_id = se.protocol_id
+        WHERE se.id = trials.subject_visits.enrollment_id
+        AND up.user_id = auth.uid()
+        AND up.resource_type = 'trial'
+        AND up.permission_level IN ('write', 'admin')
+    ));
+
+-- Sponsor Access Policies
+CREATE POLICY "Sponsors can view their trial data"
+    ON trials.study_protocols FOR SELECT
+    USING (
+        sponsor_id = auth.uid()
+        OR EXISTS (
+            SELECT 1 FROM core.profiles
+            WHERE id = auth.uid()
+            AND user_type = 'sponsor'
+            AND EXISTS (
+                SELECT 1 FROM core.user_permissions
+                WHERE user_id = auth.uid()
+                AND resource_type = 'trial'
+                AND resource_id = trials.study_protocols.id
+                AND permission_level IN ('read', 'write', 'admin')
+            )
+        )
+    );
+
+CREATE POLICY "Sponsors can view trial enrollments"
+    ON trials.subject_enrollments FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM trials.study_protocols sp
+        WHERE sp.id = trials.subject_enrollments.protocol_id
+        AND (
+            sp.sponsor_id = auth.uid()
+            OR EXISTS (
+                SELECT 1 FROM core.user_permissions
+                WHERE user_id = auth.uid()
+                AND resource_type = 'trial'
+                AND resource_id = sp.id
+                AND permission_level IN ('read', 'write', 'admin')
+            )
+        )
+    ));
+
+-- Additional Safety Policies
+CREATE POLICY "Users can only view active products"
+    ON commerce.products FOR SELECT
+    USING (is_active = true);
+
+CREATE POLICY "Users can only view active product variants"
+    ON commerce.product_variants FOR SELECT
+    USING (is_active = true);
+
+-- Ensure data sharing agreements are properly protected
+CREATE POLICY "Users can view applicable data sharing agreements"
+    ON core.data_sharing_agreements FOR SELECT
+    USING (
+        is_public = true
+        OR EXISTS (
+            SELECT 1 FROM core.user_permissions
+            WHERE user_id = auth.uid()
+            AND resource_type = 'data_sharing_agreement'
+            AND resource_id = core.data_sharing_agreements.id
+            AND permission_level IN ('read', 'write', 'admin')
+        )
+    );
+
+-- =============================================
+-- OAUTH2 CLIENT MANAGEMENT
+-- =============================================
+
+-- OAuth2 Clients (Health Apps)
+CREATE TABLE core.oauth2_clients (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_id TEXT UNIQUE NOT NULL,
+    client_secret TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    company_name TEXT NOT NULL,
+    website_url TEXT,
+    privacy_policy_url TEXT,
+    terms_of_service_url TEXT,
+    logo_url TEXT,
+    redirect_uris TEXT[] NOT NULL,
+    allowed_scopes TEXT[] NOT NULL,
+    is_verified BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_by UUID REFERENCES core.profiles(id) ON DELETE SET NULL,
+    verified_by UUID REFERENCES core.profiles(id) ON DELETE SET NULL,
+    verification_date TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- OAuth2 Access Grants (Patient Data Access Permissions)
+CREATE TABLE core.oauth2_access_grants (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
+    client_id UUID NOT NULL REFERENCES core.oauth2_clients(id) ON DELETE CASCADE,
+    scopes TEXT[] NOT NULL,
+    granted_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE,
+    last_used_at TIMESTAMP WITH TIME ZONE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    UNIQUE(user_id, client_id)
+);
+
+-- OAuth2 Access Tokens
+CREATE TABLE core.oauth2_access_tokens (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    access_token TEXT UNIQUE NOT NULL,
+    refresh_token TEXT UNIQUE,
+    grant_id UUID NOT NULL REFERENCES core.oauth2_access_grants(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
+    client_id UUID NOT NULL REFERENCES core.oauth2_clients(id) ON DELETE CASCADE,
+    scopes TEXT[] NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- OAuth2 Authorization Codes
+CREATE TABLE core.oauth2_authorization_codes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code TEXT UNIQUE NOT NULL,
+    user_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
+    client_id UUID NOT NULL REFERENCES core.oauth2_clients(id) ON DELETE CASCADE,
+    redirect_uri TEXT NOT NULL,
+    scopes TEXT[] NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- OAuth2 Client Event Log
+CREATE TABLE core.oauth2_client_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_id UUID NOT NULL REFERENCES core.oauth2_clients(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL CHECK (event_type IN ('access_granted', 'access_revoked', 'token_issued', 'token_refreshed', 'token_revoked', 'client_verified', 'client_suspended')),
+    user_id UUID REFERENCES core.profiles(id) ON DELETE SET NULL,
+    ip_address TEXT,
+    user_agent TEXT,
+    details JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Enable RLS on OAuth2 tables
+ALTER TABLE core.oauth2_clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.oauth2_access_grants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.oauth2_access_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.oauth2_authorization_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE core.oauth2_client_events ENABLE ROW LEVEL SECURITY;
+
+-- OAuth2 Client policies
+CREATE POLICY "Public can view verified active clients"
+    ON core.oauth2_clients FOR SELECT
+    USING (is_verified = true AND is_active = true);
+
+CREATE POLICY "Users can view their own clients"
+    ON core.oauth2_clients FOR SELECT
+    USING (created_by = auth.uid());
+
+CREATE POLICY "Users can manage their own clients"
+    ON core.oauth2_clients FOR ALL
+    USING (created_by = auth.uid());
+
+-- OAuth2 Access Grant policies
+CREATE POLICY "Users can view their access grants"
+    ON core.oauth2_access_grants FOR SELECT
+    USING (user_id = auth.uid());
+
+CREATE POLICY "Users can manage their access grants"
+    ON core.oauth2_access_grants FOR ALL
+    USING (user_id = auth.uid());
+
+-- OAuth2 Access Token policies
+CREATE POLICY "Users can view their tokens"
+    ON core.oauth2_access_tokens FOR SELECT
+    USING (user_id = auth.uid());
+
+-- OAuth2 Client Event policies
+CREATE POLICY "Users can view their client events"
+    ON core.oauth2_client_events FOR SELECT
+    USING (
+        user_id = auth.uid()
+        OR EXISTS (
+            SELECT 1 FROM core.oauth2_clients
+            WHERE id = core.oauth2_client_events.client_id
+            AND created_by = auth.uid()
+        )
+    );
+
+-- Create indexes for OAuth2 tables
+CREATE INDEX idx_oauth2_clients_client_id ON core.oauth2_clients(client_id);
+CREATE INDEX idx_oauth2_access_grants_user ON core.oauth2_access_grants(user_id);
+CREATE INDEX idx_oauth2_access_grants_client ON core.oauth2_access_grants(client_id);
+CREATE INDEX idx_oauth2_access_tokens_access_token ON core.oauth2_access_tokens(access_token);
+CREATE INDEX idx_oauth2_access_tokens_refresh_token ON core.oauth2_access_tokens(refresh_token);
+CREATE INDEX idx_oauth2_access_tokens_user ON core.oauth2_access_tokens(user_id);
+CREATE INDEX idx_oauth2_access_tokens_client ON core.oauth2_access_tokens(client_id);
+CREATE INDEX idx_oauth2_authorization_codes_code ON core.oauth2_authorization_codes(code);
+CREATE INDEX idx_oauth2_client_events_client ON core.oauth2_client_events(client_id);
+CREATE INDEX idx_oauth2_client_events_user ON core.oauth2_client_events(user_id);
