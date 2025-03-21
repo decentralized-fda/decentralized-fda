@@ -305,28 +305,7 @@ CREATE TABLE medical_ref.global_variables (
     UNIQUE(name, category_id)
 );
 
--- Variable Versions
-CREATE TABLE medical_ref.variable_versions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
-    version_number INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT,
-    category_id UUID NOT NULL REFERENCES medical_ref.variable_categories(id) ON DELETE CASCADE,
-    default_unit TEXT,
-    snomed_ct_code TEXT,
-    icd_code TEXT,
-    rxnorm_code TEXT,
-    loinc_code TEXT,
-    fdc_id TEXT,
-    changed_by UUID REFERENCES core.profiles(id) ON DELETE SET NULL,
-    change_reason TEXT,
-    effective_from TIMESTAMP WITH TIME ZONE NOT NULL,
-    effective_to TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
-    UNIQUE(variable_id, version_number)
-);
+
 
 -- Variable Ingredients
 CREATE TABLE medical_ref.variable_ingredients (
@@ -349,8 +328,8 @@ CREATE TABLE medical_ref.variable_ingredients (
 -- Variable Relationships
 CREATE TABLE medical_ref.variable_relationships (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    source_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
-    target_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
+    predictor_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
+    outcome_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
     relationship_type TEXT NOT NULL CHECK (relationship_type IN ('correlates_with', 'contraindicated_with', 'treats', 'prevents', 'causes', 'exacerbates', 'diagnostic_for')),
     strength DECIMAL,
     evidence_level TEXT CHECK (evidence_level IN ('anecdotal', 'observational', 'clinical_trial', 'meta_analysis')),
@@ -360,19 +339,18 @@ CREATE TABLE medical_ref.variable_relationships (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     
-    UNIQUE(source_variable_id, target_variable_id, relationship_type),
-    CONSTRAINT no_self_relationship CHECK (source_variable_id != target_variable_id)
+    UNIQUE(predictor_variable_id, outcome_variable_id, relationship_type),
+    CONSTRAINT no_self_relationship CHECK (predictor_variable_id != outcome_variable_id)
 );
 
 -- Variable Synonyms
 CREATE TABLE medical_ref.variable_synonyms (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
+    global_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
     synonym TEXT NOT NULL,
-    language TEXT DEFAULT 'en',
+    language TEXT NOT NULL DEFAULT 'en',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
-    UNIQUE(variable_id, synonym, language)
+    UNIQUE(global_variable_id, synonym, language)
 );
 
 -- Units of Measurement
@@ -397,7 +375,7 @@ ALTER TABLE medical_ref.units_of_measurement
 -- Data Quality Rules
 CREATE TABLE medical_ref.data_quality_rules (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
+    global_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
     rule_type TEXT CHECK (rule_type IN ('range', 'pattern', 'required', 'unique', 'custom')),
     min_value DECIMAL,
     max_value DECIMAL,
@@ -461,7 +439,7 @@ CREATE TABLE medical.measurement_batches (
 CREATE TABLE medical.measurements (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
-    variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
+    global_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
     user_variable_id UUID REFERENCES medical.user_variables(id) ON DELETE SET NULL,
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
     value DECIMAL,
@@ -581,7 +559,7 @@ CREATE TABLE medical.prescriptions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     patient_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
     prescriber_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
-    medication_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE RESTRICT,
+    global_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE RESTRICT,
     dosage TEXT NOT NULL,
     frequency TEXT NOT NULL,
     duration TEXT,
@@ -712,7 +690,7 @@ CREATE TABLE trials.study_interventions (
     name TEXT NOT NULL,
     description TEXT,
     intervention_type TEXT CHECK (intervention_type IN ('drug', 'device', 'biological', 'procedure', 'radiation', 'behavioral', 'dietary_supplement', 'other')),
-    variable_id UUID REFERENCES medical_ref.global_variables(id) ON DELETE SET NULL,
+    global_variable_id UUID REFERENCES medical_ref.global_variables(id) ON DELETE SET NULL,
     dosage TEXT,
     frequency TEXT,
     duration TEXT,
@@ -873,7 +851,7 @@ CREATE TABLE trials.trial_subsidies (
 -- Products
 CREATE TABLE commerce.products (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    variable_id UUID REFERENCES medical_ref.global_variables(id) ON DELETE SET NULL,
+    global_variable_id UUID REFERENCES medical_ref.global_variables(id) ON DELETE SET NULL,
     name TEXT NOT NULL,
     description TEXT,
     product_type TEXT NOT NULL CHECK (product_type IN ('medication', 'supplement', 'device', 'test_kit', 'other')),
@@ -1305,21 +1283,20 @@ CREATE INDEX IF NOT EXISTS idx_integration_connections_provider ON core.integrat
 -- Medical_ref schema indexes
 CREATE INDEX IF NOT EXISTS idx_global_variables_category ON medical_ref.global_variables(category_id);
 CREATE INDEX IF NOT EXISTS idx_global_variables_name ON medical_ref.global_variables(name);
-CREATE INDEX IF NOT EXISTS idx_variable_versions_variable ON medical_ref.variable_versions(variable_id);
+CREATE INDEX IF NOT EXISTS idx_variable_versions_global ON medical_ref.variable_versions(global_variable_id);
 CREATE INDEX IF NOT EXISTS idx_variable_ingredients_parent ON medical_ref.variable_ingredients(parent_variable_id);
 CREATE INDEX IF NOT EXISTS idx_variable_ingredients_ingredient ON medical_ref.variable_ingredients(ingredient_variable_id);
 CREATE INDEX IF NOT EXISTS idx_variable_relationships_source ON medical_ref.variable_relationships(source_variable_id);
 CREATE INDEX IF NOT EXISTS idx_variable_relationships_target ON medical_ref.variable_relationships(target_variable_id);
-CREATE INDEX IF NOT EXISTS idx_variable_synonyms_variable ON medical_ref.variable_synonyms(variable_id);
+CREATE INDEX IF NOT EXISTS idx_variable_synonyms_global ON medical_ref.variable_synonyms(global_variable_id);
 CREATE INDEX IF NOT EXISTS idx_variable_synonyms_synonym ON medical_ref.variable_synonyms(synonym);
-CREATE INDEX IF NOT EXISTS idx_data_quality_rules_variable ON medical_ref.data_quality_rules(variable_id);
+CREATE INDEX IF NOT EXISTS idx_data_quality_rules_global ON medical_ref.data_quality_rules(global_variable_id);
 
 -- Medical schema indexes
 CREATE INDEX IF NOT EXISTS idx_user_variables_user ON medical.user_variables(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_variables_global ON medical.user_variables(global_variable_id);
 CREATE INDEX IF NOT EXISTS idx_measurements_user ON medical.measurements(user_id);
-CREATE INDEX IF NOT EXISTS idx_measurements_variable ON medical.measurements(variable_id);
-CREATE INDEX IF NOT EXISTS idx_measurements_timestamp ON medical.measurements(timestamp);
+CREATE INDEX IF NOT EXISTS idx_measurements_global_variable ON medical.measurements(global_variable_id);
 CREATE INDEX IF NOT EXISTS idx_user_variable_relationships_user ON medical.user_variable_relationships(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_variable_relationships_predictor ON medical.user_variable_relationships(predictor_variable_id);
 CREATE INDEX IF NOT EXISTS idx_user_variable_relationships_outcome ON medical.user_variable_relationships(outcome_variable_id);
@@ -1372,7 +1349,7 @@ CREATE INDEX IF NOT EXISTS idx_data_queries_measurement ON trials.data_queries(m
 CREATE INDEX IF NOT EXISTS idx_trial_subsidies_trial ON trials.trial_subsidies(trial_id);
 
 -- Commerce schema indexes
-CREATE INDEX IF NOT EXISTS idx_products_variable ON commerce.products(variable_id);
+CREATE INDEX IF NOT EXISTS idx_products_global_variable ON commerce.products(global_variable_id);
 CREATE INDEX IF NOT EXISTS idx_product_variants_product ON commerce.product_variants(product_id);
 CREATE INDEX IF NOT EXISTS idx_orders_user ON commerce.orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_trial ON commerce.orders(trial_id);
@@ -2208,3 +2185,9 @@ ALTER TABLE medical.prescriptions
         (start_date IS NOT NULL AND end_date IS NULL) OR
         (start_date IS NOT NULL AND end_date IS NOT NULL AND end_date > start_date)
     );
+
+-- Update indexes
+CREATE INDEX IF NOT EXISTS idx_measurements_global_variable ON medical.measurements(global_variable_id);
+CREATE INDEX IF NOT EXISTS idx_study_interventions_global_variable ON trials.study_interventions(global_variable_id);
+CREATE INDEX IF NOT EXISTS idx_products_global_variable ON commerce.products(global_variable_id);
+CREATE INDEX IF NOT EXISTS idx_prescriptions_global_variable ON medical.prescriptions(global_variable_id);
