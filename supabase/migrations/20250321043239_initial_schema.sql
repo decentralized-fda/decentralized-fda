@@ -73,7 +73,7 @@ CREATE TABLE core.user_permissions (
     permission_level TEXT NOT NULL CHECK (permission_level IN ('read', 'write', 'admin')),
     granted_by UUID REFERENCES core.profiles(id) ON DELETE SET NULL,
     granted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    expires_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE,
     
     UNIQUE(user_id, resource_type, resource_id)
 );
@@ -337,11 +337,12 @@ CREATE TABLE medical_ref.variable_ingredients (
     unit_id UUID REFERENCES medical_ref.units_of_measurement(id) ON DELETE RESTRICT,
     proportion DECIMAL,
     is_active_ingredient BOOLEAN DEFAULT FALSE,
+    version_number INTEGER NOT NULL DEFAULT 1,
     notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     
-    UNIQUE(parent_variable_id, ingredient_variable_id),
+    UNIQUE(parent_variable_id, ingredient_variable_id, version_number),
     CONSTRAINT no_self_reference CHECK (parent_variable_id != ingredient_variable_id)
 );
 
@@ -382,6 +383,7 @@ CREATE TABLE medical_ref.units_of_measurement (
     unit_type TEXT NOT NULL,
     conversion_factor DECIMAL,
     base_unit_id UUID,
+    ucum_code TEXT UNIQUE,
     description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -479,11 +481,11 @@ CREATE TABLE medical.user_variable_relationships (
     user_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
     reported_at TIMESTAMP WITH TIME ZONE NOT NULL,
     
-    cause_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
-    cause_measurement_id UUID REFERENCES medical.measurements(id) ON DELETE SET NULL,
+    predictor_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
+    predictor_measurement_id UUID REFERENCES medical.measurements(id) ON DELETE SET NULL,
     
-    effect_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
-    effect_measurement_id UUID REFERENCES medical.measurements(id) ON DELETE SET NULL,
+    outcome_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
+    outcome_measurement_id UUID REFERENCES medical.measurements(id) ON DELETE SET NULL,
     
     effect_size TEXT CHECK (effect_size IN ('much_worse', 'worse', 'no_change', 'better', 'much_better')),
     confidence INTEGER CHECK (confidence BETWEEN 1 AND 5),
@@ -500,8 +502,8 @@ CREATE TABLE medical.variable_ratings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES core.profiles(id) ON DELETE CASCADE,
     
-    variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
-    target_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
+    predictor_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
+    outcome_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
     
     effectiveness_rating TEXT NOT NULL CHECK (effectiveness_rating IN ('much_worse', 'worse', 'no_effect', 'better', 'much_better')),
     numeric_rating INTEGER CHECK (numeric_rating BETWEEN 1 AND 5),
@@ -530,7 +532,7 @@ CREATE TABLE medical.variable_ratings (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     deleted_at TIMESTAMP WITH TIME ZONE,
     
-    UNIQUE(user_id, variable_id, target_variable_id)
+    UNIQUE(user_id, predictor_variable_id, outcome_variable_id)
 );
 
 -- Rating Votes
@@ -814,6 +816,7 @@ CREATE TABLE trials.ecrf_forms (
 CREATE TABLE trials.ecrf_submissions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     form_id UUID NOT NULL REFERENCES trials.ecrf_forms(id) ON DELETE CASCADE,
+    form_version TEXT NOT NULL,
     enrollment_id UUID NOT NULL REFERENCES trials.subject_enrollments(id) ON DELETE CASCADE,
     visit_id UUID REFERENCES trials.subject_visits(id) ON DELETE SET NULL,
     submission_date TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -1237,13 +1240,13 @@ ALTER TABLE medical.lab_test_orders ADD CONSTRAINT fk_lab_test_orders_visit_id F
 -- VIEWS
 -- =============================================
 
--- Create aggregated ratings view
-CREATE OR REPLACE VIEW medical_ref.aggregated_variable_ratings AS
+-- Create aggregated ratings materialized view
+CREATE MATERIALIZED VIEW medical_ref.aggregated_variable_ratings AS
 SELECT 
-    vr.variable_id,
-    vr.target_variable_id,
-    gv1.name AS variable_name,
-    gv2.name AS target_variable_name,
+    vr.predictor_variable_id,
+    vr.outcome_variable_id,
+    gv1.name AS predictor_variable_name,
+    gv2.name AS outcome_variable_name,
     COUNT(vr.id) AS total_ratings,
 
     -- Effectiveness distribution
@@ -1256,7 +1259,7 @@ SELECT
     -- Average numeric rating (1-5 scale)
     AVG(vr.numeric_rating) AS avg_numeric_rating,
 
-    -- Side effects distribution (if available)
+    -- Side effects distribution
     COUNT(CASE WHEN vr.side_effects_rating = 'none' THEN 1 END) AS no_side_effects_count,
     COUNT(CASE WHEN vr.side_effects_rating = 'mild' THEN 1 END) AS mild_side_effects_count,
     COUNT(CASE WHEN vr.side_effects_rating = 'moderate' THEN 1 END) AS moderate_side_effects_count,
@@ -1268,13 +1271,18 @@ SELECT
 FROM 
     medical.variable_ratings vr
 JOIN 
-    medical_ref.global_variables gv1 ON vr.variable_id = gv1.id
+    medical_ref.global_variables gv1 ON vr.predictor_variable_id = gv1.id
 JOIN 
-    medical_ref.global_variables gv2 ON vr.target_variable_id = gv2.id
+    medical_ref.global_variables gv2 ON vr.outcome_variable_id = gv2.id
 WHERE 
     vr.is_public = TRUE
 GROUP BY 
-    vr.variable_id, vr.target_variable_id, gv1.name, gv2.name;
+    vr.predictor_variable_id, vr.outcome_variable_id, gv1.name, gv2.name
+WITH NO DATA;
+
+-- Create unique index for the materialized view
+CREATE UNIQUE INDEX idx_aggregated_ratings_variables 
+ON medical_ref.aggregated_variable_ratings(predictor_variable_id, outcome_variable_id);
 
 -- =============================================
 -- INDEXES
@@ -1313,11 +1321,11 @@ CREATE INDEX IF NOT EXISTS idx_measurements_user ON medical.measurements(user_id
 CREATE INDEX IF NOT EXISTS idx_measurements_variable ON medical.measurements(variable_id);
 CREATE INDEX IF NOT EXISTS idx_measurements_timestamp ON medical.measurements(timestamp);
 CREATE INDEX IF NOT EXISTS idx_user_variable_relationships_user ON medical.user_variable_relationships(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_variable_relationships_cause ON medical.user_variable_relationships(cause_variable_id);
-CREATE INDEX IF NOT EXISTS idx_user_variable_relationships_effect ON medical.user_variable_relationships(effect_variable_id);
+CREATE INDEX IF NOT EXISTS idx_user_variable_relationships_predictor ON medical.user_variable_relationships(predictor_variable_id);
+CREATE INDEX IF NOT EXISTS idx_user_variable_relationships_outcome ON medical.user_variable_relationships(outcome_variable_id);
 CREATE INDEX IF NOT EXISTS idx_variable_ratings_user ON medical.variable_ratings(user_id);
-CREATE INDEX IF NOT EXISTS idx_variable_ratings_variable ON medical.variable_ratings(variable_id);
-CREATE INDEX IF NOT EXISTS idx_variable_ratings_target ON medical.variable_ratings(target_variable_id);
+CREATE INDEX IF NOT EXISTS idx_variable_ratings_predictor ON medical.variable_ratings(predictor_variable_id);
+CREATE INDEX IF NOT EXISTS idx_variable_ratings_outcome ON medical.variable_ratings(outcome_variable_id);
 CREATE INDEX IF NOT EXISTS idx_variable_ratings_effectiveness ON medical.variable_ratings(effectiveness_rating);
 CREATE INDEX IF NOT EXISTS idx_rating_votes_rating ON medical.rating_votes(rating_id);
 CREATE INDEX IF NOT EXISTS idx_rating_votes_user ON medical.rating_votes(user_id);
