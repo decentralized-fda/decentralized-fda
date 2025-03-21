@@ -9,6 +9,7 @@ CREATE TABLE medical.user_variables (
     global_variable_id UUID NOT NULL REFERENCES medical_ref.global_variables(id) ON DELETE CASCADE,
     custom_name TEXT,
     custom_description TEXT,
+    preferred_unit_id UUID REFERENCES medical_ref.units_of_measurement(id) ON DELETE RESTRICT,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -664,19 +665,33 @@ BEGIN
         GET DIAGNOSTICS v_notifications_updated = v_notifications_updated + ROW_COUNT;
     END IF;
 
-    -- Create measurements for all completed notifications
+    -- Create measurements for all completed notifications using store_measurement
     INSERT INTO medical.variable_measurements (
+        id,
         user_id,
         variable_id,
         value,
         unit_id,
+        original_value,
+        original_unit_id,
         measurement_time,
         source,
         notes
     )
     SELECT 
+        medical.store_measurement(
+            pn.user_id,
+            pn.variable_id,
+            pn.response_value,
+            pn.response_unit_id,
+            pn.scheduled_for,
+            'notification_response',
+            'Recorded from notification ID: ' || pn.id::text
+        ),
         pn.user_id,
         pn.variable_id,
+        pn.response_value,
+        pn.response_unit_id,
         pn.response_value,
         pn.response_unit_id,
         pn.scheduled_for,
@@ -882,4 +897,122 @@ CREATE POLICY "Users can view their notification attempts"
     USING (EXISTS (
         SELECT 1 FROM medical.pending_notifications pn
         WHERE pn.id = notification_id AND pn.user_id = auth.uid()
-    )); 
+    ));
+
+-- Add default unit to global variables if not exists
+ALTER TABLE medical_ref.global_variables 
+ADD COLUMN IF NOT EXISTS default_unit_id UUID REFERENCES medical_ref.units_of_measurement(id) ON DELETE RESTRICT;
+
+-- Function to convert value between units
+CREATE OR REPLACE FUNCTION medical.convert_unit_value(
+    p_value DECIMAL,
+    p_from_unit_id UUID,
+    p_to_unit_id UUID
+)
+RETURNS DECIMAL
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+    v_from_unit_type TEXT;
+    v_to_unit_type TEXT;
+    v_from_multiplier DECIMAL;
+    v_to_multiplier DECIMAL;
+    v_converted_value DECIMAL;
+BEGIN
+    -- Get unit types and multipliers
+    SELECT um1.unit_type, um1.conversion_multiplier, um2.unit_type, um2.conversion_multiplier
+    INTO v_from_unit_type, v_from_multiplier, v_to_unit_type, v_to_multiplier
+    FROM medical_ref.units_of_measurement um1
+    JOIN medical_ref.units_of_measurement um2 ON um2.id = p_to_unit_id
+    WHERE um1.id = p_from_unit_id;
+
+    -- Check if units are compatible
+    IF v_from_unit_type != v_to_unit_type THEN
+        RAISE EXCEPTION 'Cannot convert between incompatible units: % and %', v_from_unit_type, v_to_unit_type;
+    END IF;
+
+    -- Convert to base unit then to target unit
+    v_converted_value := (p_value * v_from_multiplier) / v_to_multiplier;
+
+    RETURN v_converted_value;
+END;
+$$;
+
+-- Function to store measurement with automatic unit conversion
+CREATE OR REPLACE FUNCTION medical.store_measurement(
+    p_user_id UUID,
+    p_variable_id UUID,
+    p_value DECIMAL,
+    p_unit_id UUID,
+    p_measurement_time TIMESTAMPTZ DEFAULT NOW(),
+    p_source TEXT DEFAULT NULL,
+    p_notes TEXT DEFAULT NULL,
+    p_is_estimated BOOLEAN DEFAULT FALSE
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_target_unit_id UUID;
+    v_converted_value DECIMAL;
+    v_measurement_id UUID;
+BEGIN
+    -- Get the target unit (user's preferred unit or global default)
+    SELECT COALESCE(
+        uv.preferred_unit_id,
+        gv.default_unit_id
+    ) INTO v_target_unit_id
+    FROM medical_ref.global_variables gv
+    LEFT JOIN medical.user_variables uv 
+        ON uv.global_variable_id = gv.id 
+        AND uv.user_id = p_user_id
+    WHERE gv.id = p_variable_id;
+
+    -- If no target unit is set, use the provided unit
+    IF v_target_unit_id IS NULL THEN
+        v_target_unit_id := p_unit_id;
+    END IF;
+
+    -- Convert value if units are different
+    IF p_unit_id != v_target_unit_id THEN
+        v_converted_value := medical.convert_unit_value(p_value, p_unit_id, v_target_unit_id);
+    ELSE
+        v_converted_value := p_value;
+    END IF;
+
+    -- Store the measurement
+    INSERT INTO medical.variable_measurements (
+        user_id,
+        variable_id,
+        value,
+        unit_id,
+        original_value,
+        original_unit_id,
+        measurement_time,
+        source,
+        notes,
+        is_estimated
+    ) VALUES (
+        p_user_id,
+        p_variable_id,
+        v_converted_value,
+        v_target_unit_id,
+        p_value,
+        p_unit_id,
+        p_measurement_time,
+        p_source,
+        p_notes,
+        p_is_estimated
+    )
+    RETURNING id INTO v_measurement_id;
+
+    RETURN v_measurement_id;
+END;
+$$;
+
+-- Add columns to store original values
+ALTER TABLE medical.variable_measurements
+ADD COLUMN IF NOT EXISTS original_value DECIMAL,
+ADD COLUMN IF NOT EXISTS original_unit_id UUID REFERENCES medical_ref.units_of_measurement(id) ON DELETE RESTRICT; 

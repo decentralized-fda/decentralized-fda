@@ -41,33 +41,91 @@ INSERT INTO medical_ref.variable_categories (name, description, display_name) VA
 ('physical_activity', 'Physical activity tracking', 'Physical Activity');
 
 -- Medical Reference Schema - Units of Measurement
-INSERT INTO medical_ref.units_of_measurement (name, symbol, description, category) VALUES
-('milligrams', 'mg', 'Weight in milligrams', 'weight'),
-('grams', 'g', 'Weight in grams', 'weight'),
-('kilograms', 'kg', 'Weight in kilograms', 'weight'),
-('milliliters', 'ml', 'Volume in milliliters', 'volume'),
-('liters', 'l', 'Volume in liters', 'volume'),
-('celsius', '°C', 'Temperature in Celsius', 'temperature'),
-('fahrenheit', '°F', 'Temperature in Fahrenheit', 'temperature'),
-('beats_per_minute', 'bpm', 'Heart rate', 'rate'),
-('millimeters_mercury', 'mmHg', 'Blood pressure', 'pressure'),
-('steps', 'steps', 'Number of steps', 'count'),
-('hours', 'hrs', 'Duration in hours', 'time'),
-('minutes', 'min', 'Duration in minutes', 'time'),
-('seconds', 'sec', 'Duration in seconds', 'time');
+INSERT INTO medical_ref.units_of_measurement (
+    name, 
+    symbol, 
+    ucum_code,
+    description, 
+    unit_type,
+    conversion_multiplier,
+    is_si_unit,
+    display_precision
+) VALUES
+-- Mass/Weight units
+('milligram', 'mg', 'mg', 'Weight in milligrams', 'mass', 0.001, false, 2),
+('gram', 'g', 'g', 'Weight in grams', 'mass', 1.0, true, 2),
+('kilogram', 'kg', 'kg', 'Weight in kilograms', 'mass', 1000.0, false, 1),
+('pound', 'lb', '[lb_av]', 'Weight in pounds', 'mass', 453.59237, false, 1),
+('ounce', 'oz', '[oz_av]', 'Weight in ounces', 'mass', 28.349523125, false, 1),
+
+-- Volume units
+('milliliter', 'mL', 'mL', 'Volume in milliliters', 'volume', 0.001, false, 2),
+('liter', 'L', 'L', 'Volume in liters', 'volume', 1.0, true, 2),
+('cubic centimeter', 'cc', 'cm3', 'Volume in cubic centimeters', 'volume', 0.001, false, 2),
+('fluid ounce', 'fl oz', '[foz_us]', 'Volume in fluid ounces (US)', 'volume', 0.0295735295625, false, 2),
+
+-- Length units
+('millimeter', 'mm', 'mm', 'Length in millimeters', 'length', 0.001, false, 1),
+('centimeter', 'cm', 'cm', 'Length in centimeters', 'length', 0.01, false, 1),
+('meter', 'm', 'm', 'Length in meters', 'length', 1.0, true, 2),
+('inch', 'in', '[in_i]', 'Length in inches', 'length', 0.0254, false, 1),
+('foot', 'ft', '[ft_i]', 'Length in feet', 'length', 0.3048, false, 1),
+
+-- Temperature units (special conversion handled in code)
+('celsius', '°C', 'Cel', 'Temperature in Celsius', 'temperature', 1.0, true, 1),
+('fahrenheit', '°F', '[degF]', 'Temperature in Fahrenheit', 'temperature', NULL, false, 1),
+('kelvin', 'K', 'K', 'Temperature in Kelvin', 'temperature', NULL, false, 1),
+
+-- Pressure units
+('millimeter of mercury', 'mmHg', 'mm[Hg]', 'Pressure in millimeters of mercury', 'pressure', 133.322, false, 1),
+('kilopascal', 'kPa', 'kPa', 'Pressure in kilopascals', 'pressure', 1000.0, false, 2),
+('pascal', 'Pa', 'Pa', 'Pressure in pascals', 'pressure', 1.0, true, 0),
+
+-- Time units
+('second', 'sec', 's', 'Time in seconds', 'time', 1.0, true, 0),
+('minute', 'min', 'min', 'Time in minutes', 'time', 60.0, false, 0),
+('hour', 'hr', 'h', 'Time in hours', 'time', 3600.0, false, 1),
+('day', 'd', 'd', 'Time in days', 'time', 86400.0, false, 1),
+('week', 'wk', 'wk', 'Time in weeks', 'time', 604800.0, false, 1),
+
+-- Rate units
+('per second', '/s', '/s', 'Rate per second', 'rate', 1.0, true, 2),
+('per minute', '/min', '/min', 'Rate per minute', 'rate', 0.0166666667, false, 2),
+('per hour', '/hr', '/h', 'Rate per hour', 'rate', 0.000277778, false, 3),
+('beats per minute', 'bpm', '{beats}/min', 'Heart rate', 'rate', 0.0166666667, false, 0),
+('breaths per minute', 'br/min', '{breaths}/min', 'Respiratory rate', 'rate', 0.0166666667, false, 0),
+
+-- Concentration units
+('milligrams per deciliter', 'mg/dL', 'mg/dL', 'Concentration in mg/dL', 'concentration', 0.01, false, 1),
+('millimoles per liter', 'mmol/L', 'mmol/L', 'Concentration in mmol/L', 'concentration', 1.0, true, 2),
+('micrograms per milliliter', 'µg/mL', 'ug/mL', 'Concentration in µg/mL', 'concentration', 0.001, false, 2),
+
+-- Ratio units
+('percentage', '%', '%', 'Ratio as percentage', 'ratio', 0.01, false, 1),
+('ratio', 'ratio', '1', 'Pure ratio', 'ratio', 1.0, true, 3),
+
+-- Count units (no conversion needed)
+('count', '', '1', 'Simple count', 'count', 1.0, true, 0),
+('steps', 'steps', '{steps}', 'Number of steps', 'count', 1.0, false, 0),
+
+-- Energy units
+('calorie', 'cal', 'cal', 'Energy in calories', 'energy', 4.184, false, 1),
+('kilocalorie', 'kcal', 'kcal', 'Energy in kilocalories', 'energy', 4184.0, false, 1),
+('joule', 'J', 'J', 'Energy in joules', 'energy', 1.0, true, 1),
+('kilojoule', 'kJ', 'kJ', 'Energy in kilojoules', 'energy', 1000.0, false, 1);
 
 -- Medical Reference Schema - Common Lab Tests
 INSERT INTO medical_ref.lab_tests (name, description, category, unit_id) VALUES
-('blood_glucose', 'Blood glucose level', 'blood', (SELECT id FROM medical_ref.units_of_measurement WHERE symbol = 'mg')),
-('hemoglobin_a1c', 'Hemoglobin A1C percentage', 'blood', NULL),
-('total_cholesterol', 'Total cholesterol level', 'blood', (SELECT id FROM medical_ref.units_of_measurement WHERE symbol = 'mg')),
-('hdl_cholesterol', 'HDL cholesterol level', 'blood', (SELECT id FROM medical_ref.units_of_measurement WHERE symbol = 'mg')),
-('ldl_cholesterol', 'LDL cholesterol level', 'blood', (SELECT id FROM medical_ref.units_of_measurement WHERE symbol = 'mg')),
-('triglycerides', 'Triglycerides level', 'blood', (SELECT id FROM medical_ref.units_of_measurement WHERE symbol = 'mg')),
-('blood_pressure_systolic', 'Systolic blood pressure', 'vital', (SELECT id FROM medical_ref.units_of_measurement WHERE symbol = 'mmHg')),
-('blood_pressure_diastolic', 'Diastolic blood pressure', 'vital', (SELECT id FROM medical_ref.units_of_measurement WHERE symbol = 'mmHg')),
-('heart_rate', 'Heart rate', 'vital', (SELECT id FROM medical_ref.units_of_measurement WHERE symbol = 'bpm')),
-('body_temperature', 'Body temperature', 'vital', (SELECT id FROM medical_ref.units_of_measurement WHERE symbol = '°C'));
+('blood_glucose', 'Blood glucose level', 'blood', (SELECT id FROM medical_ref.units_of_measurement WHERE ucum_code = 'mg/dL')),
+('hemoglobin_a1c', 'Hemoglobin A1C percentage', 'blood', (SELECT id FROM medical_ref.units_of_measurement WHERE ucum_code = '%')),
+('total_cholesterol', 'Total cholesterol level', 'blood', (SELECT id FROM medical_ref.units_of_measurement WHERE ucum_code = 'mg/dL')),
+('hdl_cholesterol', 'HDL cholesterol level', 'blood', (SELECT id FROM medical_ref.units_of_measurement WHERE ucum_code = 'mg/dL')),
+('ldl_cholesterol', 'LDL cholesterol level', 'blood', (SELECT id FROM medical_ref.units_of_measurement WHERE ucum_code = 'mg/dL')),
+('triglycerides', 'Triglycerides level', 'blood', (SELECT id FROM medical_ref.units_of_measurement WHERE ucum_code = 'mg/dL')),
+('blood_pressure_systolic', 'Systolic blood pressure', 'vital', (SELECT id FROM medical_ref.units_of_measurement WHERE ucum_code = 'mm[Hg]')),
+('blood_pressure_diastolic', 'Diastolic blood pressure', 'vital', (SELECT id FROM medical_ref.units_of_measurement WHERE ucum_code = 'mm[Hg]')),
+('heart_rate', 'Heart rate', 'vital', (SELECT id FROM medical_ref.units_of_measurement WHERE ucum_code = '{beats}/min')),
+('body_temperature', 'Body temperature', 'vital', (SELECT id FROM medical_ref.units_of_measurement WHERE ucum_code = 'Cel'));
 
 -- Commerce Schema - Service Types
 INSERT INTO scheduling.service_types (name, description, duration_minutes, is_active) VALUES
