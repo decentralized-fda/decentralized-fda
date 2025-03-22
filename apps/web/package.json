@@ -8,7 +8,6 @@
   "scripts": {
     "dev": "next dev",
     "type-check": "tsc --noEmit",
-    "check-links": "jest __tests__/integration/link-checker.test.ts",
     "lint": "next lint",
     "generate-routes": "ts-node --project scripts/tsconfig.json scripts/generateRouteTree.ts",
     "build": "next build",
@@ -75,7 +74,6 @@
     "@aws-sdk/lib-storage": "^3.722.0",
     "@copilotkit/backend": "^0.9.0",
     "@copilotkit/react-core": "^0.25.0",
-    "@decentralized-fda/link-checker": "workspace:*",
     "@hookform/resolvers": "^3.3.4",
     "@next-auth/prisma-adapter": "^1.0.7",
     "@next/bundle-analyzer": "^14.2.15",
@@ -105,6 +103,7 @@
     "@radix-ui/react-toast": "^1.1.5",
     "@radix-ui/react-tooltip": "^1.1.6",
     "@radix-ui/themes": "^3.0.5",
+    "@sentry/nextjs": "9",
     "@supabase/supabase-js": "^2.43.4",
     "@t3-oss/env-nextjs": "^0.9.2",
     "@tanstack/react-query": "^5.28.6",
