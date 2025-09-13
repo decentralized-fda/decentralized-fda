@@ -121,7 +121,7 @@
     "ai": "4.0.18",
     "autocomplete-lhc": "^19.2.4",
     "autoprefixer": "10.4.17",
-    "axios": "^1.6.8",
+    "axios": "^1.12.0",
     "chart.js": "^4.4.2",
     "chartjs-plugin-datalabels": "^2.2.0",
     "cheerio": "1.0.0-rc.12",
