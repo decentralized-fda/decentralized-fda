@@ -93,7 +93,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@types/luxon": "^3.6.2",
     "@types/uuid": "^10.0.0",
-    "ai": "^4.3.7",
+    "ai": "^5.0.52",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
