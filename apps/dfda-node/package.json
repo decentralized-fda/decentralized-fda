@@ -55,7 +55,7 @@
     "@copilotkit/runtime": "^1.8.11",
     "@google/genai": "^0.10.0",
     "@hookform/resolvers": "^3.9.1",
-    "@langchain/core": "^0.3.56",
+    "@langchain/core": "^0.3.80",
     "@langchain/langgraph": "^0.2.72",
     "@langchain/openai": "^0.5.10",
     "@radix-ui/react-accordion": "^1.2.2",
