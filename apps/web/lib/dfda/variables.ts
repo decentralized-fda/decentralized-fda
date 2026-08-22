@@ -106,7 +106,7 @@ export async function searchDfdaVariables(
   additionalParams: Record<string, string> = {}
 ): Promise<GlobalVariable[]> {
   try {
-    const baseUrl = "https://safe.fdai.earth/api/v3/variables"
+    const baseUrl = "https://app.dfda.earth/api/v3/variables"
     const params = new URLSearchParams({
       appName: "The Decentralized FDA",
       clientId: getDFDAClientId(),
